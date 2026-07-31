@@ -822,29 +822,6 @@ function renderAll() {
   if (showSettings) renderSettingsPanel();
 }
 
-// ─── ACTIONS ─────────────────────────────────────────────────────────────────
-async function saveEntry() {
-  const e = buildDraftFromForm();
-  if (!e.date) { alert('Selecione uma data válida!'); return; }
-  document.getElementById('saveBtn').disabled = true;
-  if (editingId) {
-    entries = entries.map(x => x.id === editingId ? { ...e, id: editingId } : x);
-    await upsertEntry({ ...e, id: editingId });
-    editingId = null;
-  } else {
-    entries.push(e);
-    await upsertEntry(e);
-  }
-  draft = {};
-  document.getElementById('formTitle').textContent = 'Novo lançamento do dia';
-  document.getElementById('saveBtn').textContent = 'Adicionar dia';
-  document.getElementById('saveBtn').disabled = false;
-  document.getElementById('cancelBtn').style.display = 'none';
-  document.getElementById('entryDate').value = localDateStr();
-  document.getElementById('entryNote').value = '';
-  renderAll();
-}
-
 const ADMIN_PASS_KEY = 'op-financeiro:admin-pass:v1';
 function getAdminPassword() {
   return localStorage.getItem(ADMIN_PASS_KEY) || 'nervo';
@@ -870,6 +847,33 @@ function changeAdminPassword() {
   }
   localStorage.setItem(ADMIN_PASS_KEY, newPass.trim());
   alert('✅ Senha administrativa alterada com sucesso!');
+}
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+async function saveEntry() {
+  const e = buildDraftFromForm();
+  if (!e.date) { alert('Selecione uma data válida!'); return; }
+
+  // Exigir senha administrativa para adicionar dia ou salvar alterações
+  if (!verifyAdminPassword()) return;
+
+  document.getElementById('saveBtn').disabled = true;
+  if (editingId) {
+    entries = entries.map(x => x.id === editingId ? { ...e, id: editingId } : x);
+    await upsertEntry({ ...e, id: editingId });
+    editingId = null;
+  } else {
+    entries.push(e);
+    await upsertEntry(e);
+  }
+  draft = {};
+  document.getElementById('formTitle').textContent = 'Novo lançamento do dia';
+  document.getElementById('saveBtn').textContent = 'Adicionar dia';
+  document.getElementById('saveBtn').disabled = false;
+  document.getElementById('cancelBtn').style.display = 'none';
+  document.getElementById('entryDate').value = localDateStr();
+  document.getElementById('entryNote').value = '';
+  renderAll();
 }
 
 function editEntry(id) {
@@ -940,6 +944,7 @@ function toggleNote() {
 }
 
 async function addTicket() {
+  if (!verifyAdminPassword()) return;
   const t = { id: 't'+Date.now(), label: 'Novo ticket', price: 0, net: 0 };
   tickets.push(t);
   await upsertTicket(t);
@@ -947,6 +952,7 @@ async function addTicket() {
 }
 
 async function removeTicket(i) {
+  if (!verifyAdminPassword()) return;
   if (tickets.length <= 1) { alert('Deve ter ao menos um ticket!'); return; }
   if (!confirm('Remover este ticket?')) return;
   const id = tickets[i].id;
