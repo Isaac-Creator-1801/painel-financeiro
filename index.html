@@ -279,7 +279,7 @@
 
 <script>
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
-const SUPABASE_URL = 'https://cximawtciwlpnctracul.supabase.co';
+const SUPABASE_URL = 'https://cximawtciwtpnctracul.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4aW1hd3RjaXd0cG5jdHJhY3VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1MTY1MzksImV4cCI6MjEwMTA5MjUzOX0.y58wWCapJfIttYNnkilUzx8OIuL9t0tbnoBRQLABXZA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -353,10 +353,10 @@ async function loadFromSupabase() {
     const { data: e, error: eErr } = await sb.from('entries').select('*');
     
     if (tErr) {
-      alert('Supabase (carregar tickets): ' + tErr.message + '\nCódigo: ' + tErr.code);
+      console.error('Supabase (carregar tickets):', tErr.message);
     }
     if (eErr) {
-      alert('Supabase (carregar lançamentos): ' + eErr.message + '\nCódigo: ' + eErr.code);
+      console.error('Supabase (carregar lançamentos):', eErr.message);
     }
     
     tickets = (t && t.length) ? t : DEFAULT_TICKETS;
@@ -367,7 +367,7 @@ async function loadFromSupabase() {
       if (error) console.error('Erro ao criar tickets padrão:', error);
     }
   } catch (err) {
-    alert('Erro geral ao conectar com Supabase: ' + err.message);
+    console.error('Erro geral ao conectar com Supabase:', err);
   }
 }
 
@@ -375,28 +375,28 @@ async function upsertTicket(ticket) {
   showSync();
   const { error } = await sb.from('tickets').upsert(ticket);
   if (error) {
-    alert('Supabase (salvar ticket): ' + error.message + '\nDetalhe: ' + error.details);
+    console.error('Supabase (salvar ticket):', error.message);
   }
 }
 async function deleteTicketFromDB(id) {
   showSync();
   const { error } = await sb.from('tickets').delete().eq('id', id);
   if (error) {
-    alert('Supabase (excluir ticket): ' + error.message);
+    console.error('Supabase (excluir ticket):', error.message);
   }
 }
 async function upsertEntry(entry) {
   showSync();
   const { error } = await sb.from('entries').upsert(entry);
   if (error) {
-    alert('Supabase (salvar lançamento): ' + error.message + '\nDetalhe: ' + error.details + '\nDica: ' + error.hint);
+    console.error('Supabase (salvar lançamento):', error.message);
   }
 }
 async function deleteEntryFromDB(id) {
   showSync();
   const { error } = await sb.from('entries').delete().eq('id', id);
   if (error) {
-    alert('Supabase (excluir lançamento): ' + error.message);
+    console.error('Supabase (excluir lançamento):', error.message);
   }
 }
 

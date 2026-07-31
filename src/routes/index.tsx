@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { EntriesTable } from "@/components/finance/EntriesTable";
 import { EntryForm } from "@/components/finance/EntryForm";
+import { SupabaseModal } from "@/components/finance/SupabaseModal";
 import { TicketSettings } from "@/components/finance/TicketSettings";
 import { StatCard } from "@/components/finance/ui";
 import {
@@ -22,6 +23,14 @@ import {
   type DayEntry,
   type Ticket,
 } from "@/lib/finance";
+import {
+  deleteEntryFromSupabase,
+  fetchEntriesFromSupabase,
+  fetchTicketsFromSupabase,
+  isSupabaseConfigured,
+  saveEntryToSupabase,
+  saveTicketsToSupabase,
+} from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -52,21 +61,68 @@ function Dashboard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [month, setMonth] = useState<string>("all");
   const [showSettings, setShowSettings] = useState(false);
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
   const [ready, setReady] = useState(false);
+  const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    setTickets(loadTickets());
-    setEntries(loadEntries());
-    setDraft(emptyEntry());
-    setReady(true);
+  // Função para sincronizar dados com o Supabase
+  const syncWithSupabase = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setSupabaseConnected(false);
+      return;
+    }
+    setSyncing(true);
+
+    const remoteTickets = await fetchTicketsFromSupabase();
+    if (remoteTickets && remoteTickets.length > 0) {
+      setTickets(remoteTickets);
+      saveTickets(remoteTickets);
+    }
+
+    const remoteEntries = await fetchEntriesFromSupabase();
+    if (remoteEntries) {
+      setEntries(remoteEntries);
+      saveEntries(remoteEntries);
+      setSupabaseConnected(true);
+    } else {
+      setSupabaseConnected(false);
+    }
+    setSyncing(false);
   }, []);
 
   useEffect(() => {
-    if (ready) saveTickets(tickets);
-  }, [tickets, ready]);
+    // Carregar inicialmente do localStorage
+    const localT = loadTickets();
+    const localE = loadEntries();
+    setTickets(localT);
+    setEntries(localE);
+    setReady(true);
+
+    // Tentativa inicial de sync
+    syncWithSupabase();
+
+    // Polling automático a cada 5 segundos para refletir mudanças do celular/PC em tempo real
+    const interval = setInterval(() => {
+      syncWithSupabase();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [syncWithSupabase]);
 
   useEffect(() => {
-    if (ready) saveEntries(entries);
+    if (ready) {
+      saveTickets(tickets);
+      if (supabaseConnected) {
+        saveTicketsToSupabase(tickets);
+      }
+    }
+  }, [tickets, ready, supabaseConnected]);
+
+  useEffect(() => {
+    if (ready) {
+      saveEntries(entries);
+    }
   }, [entries, ready]);
 
   const months = useMemo(
@@ -92,14 +148,27 @@ function Dashboard() {
   const totals = useMemo(() => sumMetrics(filtered, tickets), [filtered, tickets]);
   const costs = useMemo(() => costBreakdown(filtered), [filtered]);
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
+    const entryToSave = draft;
+
     if (editingId) {
-      setEntries((prev) => prev.map((e) => (e.id === editingId ? draft : e)));
+      setEntries((prev) => prev.map((e) => (e.id === editingId ? entryToSave : e)));
       setEditingId(null);
     } else {
-      setEntries((prev) => [...prev, draft]);
+      setEntries((prev) => [...prev, entryToSave]);
     }
     setDraft(emptyEntry());
+
+    if (supabaseConnected) {
+      await saveEntryToSupabase(entryToSave);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    if (supabaseConnected) {
+      await deleteEntryFromSupabase(id);
+    }
   };
 
   const exportCsv = () => {
@@ -124,12 +193,26 @@ function Dashboard() {
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-primary">
-            Operação · controle diário
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-primary">
+              Operação · controle diário
+            </p>
+            <button
+              onClick={() => setShowSupabaseModal(true)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.7rem] font-medium transition-all ${
+                supabaseConnected
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 animate-pulse"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${supabaseConnected ? "bg-emerald-400" : "bg-amber-400"}`} />
+              {supabaseConnected ? "Supabase Conectado" : "Conectar Supabase"}
+              {syncing && <span className="animate-spin text-[0.6rem]">↻</span>}
+            </button>
+          </div>
           <h1 className="mt-1 text-3xl font-semibold sm:text-4xl">Controle Financeiro</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Vendas por ticket, gastos e lucro real — dia a dia.
+            Vendas por ticket, gastos e lucro real — sincronizado no PC e Celular.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -150,6 +233,12 @@ function Dashboard() {
             className="rounded-lg border border-border px-3 py-2 text-sm transition-colors hover:bg-surface-2"
           >
             Exportar CSV
+          </button>
+          <button
+            onClick={() => setShowSupabaseModal(true)}
+            className="rounded-lg border border-border px-3 py-2 text-sm transition-colors hover:bg-surface-2 flex items-center gap-1.5"
+          >
+            ⚙️ Database
           </button>
           <button
             onClick={() => setShowSettings((s) => !s)}
@@ -222,7 +311,7 @@ function Dashboard() {
             setEditingId(original.id);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          onDelete={(id) => setEntries((prev) => prev.filter((e) => e.id !== id))}
+          onDelete={handleDelete}
         />
 
         <section className="panel p-5">
@@ -269,8 +358,16 @@ function Dashboard() {
       </div>
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        Os dados ficam salvos neste navegador. Use “Exportar CSV” para backup ou para abrir no Excel.
+        {supabaseConnected
+          ? "🟢 Sincronizado em tempo real com o banco de dados Supabase (PC & Celular)."
+          : "⚠️ Os dados estão sendo salvos apenas no navegador local. Clique em 'Conectar Supabase' acima para sincronizar no celular."}
       </p>
+
+      <SupabaseModal
+        isOpen={showSupabaseModal}
+        onClose={() => setShowSupabaseModal(false)}
+        onSaved={syncWithSupabase}
+      />
     </main>
   );
 }
