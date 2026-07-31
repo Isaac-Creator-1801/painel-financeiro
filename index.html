@@ -507,7 +507,10 @@
         <h2 class="form-title">Configuração de Tickets</h2>
         <p class="form-sub">Defina os valores de preço e comissão líquida de cada ticket.</p>
       </div>
-      <button class="btn btn-sm" onclick="addTicket()">+ Novo ticket</button>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <button class="btn btn-sm" onclick="changeAdminPassword()">🔑 Alterar Senha</button>
+        <button class="btn btn-sm" onclick="addTicket()">+ Novo ticket</button>
+      </div>
     </div>
     <div class="tickets-settings-grid" id="ticketsSettingsGrid"></div>
   </div>
@@ -842,15 +845,56 @@ async function saveEntry() {
   renderAll();
 }
 
+const ADMIN_PASS_KEY = 'op-financeiro:admin-pass:v1';
+function getAdminPassword() {
+  return localStorage.getItem(ADMIN_PASS_KEY) || 'nervo';
+}
+
+function verifyAdminPassword() {
+  const currentPass = getAdminPassword();
+  const input = prompt('🔒 Digite a senha administrativa:');
+  if (input === null) return false;
+  if (input.trim() !== currentPass) {
+    alert('❌ Senha incorreta! Operação cancelada.');
+    return false;
+  }
+  return true;
+}
+
+function changeAdminPassword() {
+  if (!verifyAdminPassword()) return;
+  const newPass = prompt('🔑 Digite a NOVA senha administrativa:');
+  if (!newPass || !newPass.trim()) {
+    alert('Senha inválida!');
+    return;
+  }
+  localStorage.setItem(ADMIN_PASS_KEY, newPass.trim());
+  alert('✅ Senha administrativa alterada com sucesso!');
+}
+
 function editEntry(id) {
-  const e = entries.find(x=>x.id===id); if (!e) return;
-  editingId = id; draft = { ...e };
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+
+  // 1. Pedir a senha primeiro
+  if (!verifyAdminPassword()) return;
+
+  // 2. Confirmar se realmente deseja editar
+  const displayDate = formatDate(e.date);
+  if (!confirm(`⚠️ Você realmente deseja EDITAR o lançamento do dia ${displayDate}?`)) {
+    return;
+  }
+
+  editingId = id;
+  draft = { ...e };
   document.getElementById('entryDate').value = e.date;
   document.getElementById('formTitle').textContent = 'Editando lançamento';
   document.getElementById('saveBtn').textContent = 'Salvar alterações';
   document.getElementById('cancelBtn').style.display = '';
   document.getElementById('entryNote').value = e.note ?? '';
-  renderSalesGrid(); renderCostsGrid(); updatePreview();
+  renderSalesGrid();
+  renderCostsGrid();
+  updatePreview();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -865,8 +909,19 @@ function cancelEdit() {
 }
 
 async function deleteEntry(id) {
-  if (!confirm('Excluir este lançamento?')) return;
-  entries = entries.filter(e=>e.id!==id);
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+
+  // 1. Pedir a senha primeiro
+  if (!verifyAdminPassword()) return;
+
+  // 2. Confirmar se realmente deseja excluir
+  const displayDate = formatDate(e.date);
+  if (!confirm(`❌ Você realmente deseja EXCLUIR o lançamento do dia ${displayDate}? Essa ação não poderá ser desfeita.`)) {
+    return;
+  }
+
+  entries = entries.filter(x => x.id !== id);
   await deleteEntryFromDB(id);
   renderAll();
 }
