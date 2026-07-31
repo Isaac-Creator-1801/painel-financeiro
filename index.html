@@ -758,7 +758,7 @@ function renderSalesGrid() {
 function renderCostsGrid() {
   document.getElementById('costsGrid').innerHTML = `
     <div class="field-wrap"><span class="field-label">Fatura de anúncios (acumulada)</span><input type="number" class="field" id="c_adSpend" min="0" step="0.01" value="${draft.adSpend??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
-    <div class="field-wrap"><span class="field-label">Plataforma de automação</span><input type="number" class="field" id="c_automationCost" min="0" step="0.01" value="${draft.automationCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
+    <div class="field-wrap"><span class="field-label">Zappcash</span><input type="number" class="field" id="c_automationCost" min="0" step="0.01" value="${draft.automationCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
     <div class="field-wrap"><span class="field-label">Criativos</span><input type="number" class="field" id="c_creativeCost" min="0" step="0.01" value="${draft.creativeCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
     <div class="field-wrap"><span class="field-label">Pedidos frustrados</span><input type="number" class="field" id="c_frustratedCost" min="0" step="0.01" value="${draft.frustratedCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
     <div class="field-wrap"><span class="field-label">Outros</span><input type="number" class="field" id="c_otherCost" min="0" step="0.01" value="${draft.otherCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>`;
@@ -783,7 +783,7 @@ function renderTable(filtered) {
 }
 
 function renderCostBreakdown(totals, costs) {
-  const rows = [{ label:'Anúncios / tráfego', value:costs.adSpend },{ label:'Criativos', value:costs.creativeCost },{ label:'Plataforma de automação', value:costs.automationCost },{ label:'Pedidos frustrados', value:costs.frustratedCost },{ label:'Outros', value:costs.otherCost }].sort((a,b)=>b.value-a.value);
+  const rows = [{ label:'Anúncios / tráfego', value:costs.adSpend },{ label:'Criativos', value:costs.creativeCost },{ label:'Zappcash', value:costs.automationCost },{ label:'Pedidos frustrados', value:costs.frustratedCost },{ label:'Outros', value:costs.otherCost }].sort((a,b)=>b.value-a.value);
   document.getElementById('costBreakdown').innerHTML = rows.map(row => { const s = totals.costs>0?row.value/totals.costs:0; return `<div class="cost-row"><div class="cost-row-label"><span class="muted">${row.label}</span><span>${brl(row.value)}</span></div><div class="cost-bar-bg"><div class="cost-bar-fill" style="width:${Math.min(100,s*100)}%"></div></div></div>`; }).join('');
   document.getElementById('costStats').innerHTML = `<div class="cost-stat-row"><span class="muted">Pedidos no período</span><span>${totals.units}</span></div><div class="cost-stat-row"><span class="muted">Ticket médio líquido</span><span>${totals.units?brl(totals.revenue/totals.units):'—'}</span></div><div class="cost-stat-row"><span class="muted">Lucro por pedido</span><span>${totals.units?brl(totals.profit/totals.units):'—'}</span></div>`;
 }

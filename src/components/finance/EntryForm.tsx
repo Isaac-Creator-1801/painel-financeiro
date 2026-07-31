@@ -139,7 +139,7 @@ export function EntryForm({
           >
             {numberInput(entry.adSpend, (v) => set({ adSpend: n(v) }))}
           </Field>
-          <Field label="Plataforma de automação">
+          <Field label="Zappcash">
             {numberInput(entry.automationCost, (v) => set({ automationCost: n(v) }))}
           </Field>
           <Field label="Criativos">

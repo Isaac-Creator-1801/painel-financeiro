@@ -184,7 +184,7 @@ function Dashboard() {
   const costRows = [
     { label: "Anúncios / tráfego", value: costs.adSpend },
     { label: "Criativos", value: costs.creativeCost },
-    { label: "Plataforma de automação", value: costs.automationCost },
+    { label: "Zappcash", value: costs.automationCost },
     { label: "Pedidos frustrados", value: costs.frustratedCost },
     { label: "Outros", value: costs.otherCost },
   ].sort((a, b) => b.value - a.value);
