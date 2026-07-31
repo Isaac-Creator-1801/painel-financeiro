@@ -6,9 +6,9 @@
   <title>Controle Financeiro da Operação | Painel de Vendas e Gastos</title>
   <meta name="description" content="Lance vendas por ticket e gastos diários e acompanhe retorno líquido, lucro, ROAS e margem da sua operação." />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
       --radius: 0.75rem;
       --bg: #1a1f2e;
@@ -27,7 +27,6 @@
       --muted: #8896b0;
       --shadow: 0 24px 60px -30px rgba(0,0,0,0.85);
     }
-
     body {
       background-color: var(--bg);
       background-image:
@@ -38,69 +37,66 @@
       font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
       min-height: 100vh;
     }
-
     h1, h2, h3 { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.02em; }
-
     .container { max-width: 1280px; margin: 0 auto; padding: 2rem 1.5rem; }
 
-    /* PANEL */
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: calc(var(--radius) + 8px);
-      box-shadow: var(--shadow);
+    /* LOADING OVERLAY */
+    #loadingOverlay {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; gap: 1rem;
     }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--surface-2);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 0.875rem; color: var(--muted); }
 
-    /* FIELD */
+    /* SYNC INDICATOR */
+    #syncIndicator {
+      position: fixed; bottom: 1rem; right: 1rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0.5rem 0.875rem;
+      font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    #syncIndicator.show { opacity: 1; }
+    .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--positive); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* PANEL */
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: calc(var(--radius) + 8px); box-shadow: var(--shadow); }
     .field {
-      width: 100%;
-      background: var(--surface-2);
-      border: 1px solid var(--input-border);
-      border-radius: var(--radius);
-      padding: 0.5rem 0.7rem;
-      color: var(--fg);
-      font-size: 0.875rem;
-      outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      font-family: inherit;
+      width: 100%; background: var(--surface-2); border: 1px solid var(--input-border);
+      border-radius: var(--radius); padding: 0.5rem 0.7rem; color: var(--fg);
+      font-size: 0.875rem; outline: none; transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit;
     }
     .field:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(94,240,160,0.25); }
     .field[type="date"] { cursor: pointer; }
     .field[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
-    /* BUTTONS */
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: var(--radius);
-      padding: 0.5rem 1rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: opacity 0.15s, background 0.15s, color 0.15s;
-      border: none;
-    }
+    .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius); padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: opacity 0.15s, background 0.15s, color 0.15s; border: none; }
     .btn-primary { background: var(--primary); color: var(--primary-fg); }
     .btn-primary:hover { opacity: 0.88; }
     .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
     .btn-ghost:hover { background: var(--surface-2); color: var(--fg); }
-    .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 500; border-radius: 0.5rem; background: var(--surface-2); color: var(--fg); border: 1px solid var(--border); }
+    .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 500; border-radius: 0.5rem; background: var(--surface-2); color: var(--fg); border: 1px solid var(--border); cursor: pointer; }
     .btn-sm:hover { background: var(--surface-3); color: var(--primary); }
     .btn-danger { background: transparent; color: var(--negative); border: none; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.4rem; transition: background 0.15s; }
     .btn-danger:hover { background: var(--surface-2); }
     .btn-edit { background: transparent; color: var(--accent); border: none; font-size: 0.75rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.4rem; transition: background 0.15s; }
     .btn-edit:hover { background: var(--surface-2); }
 
-    /* HEADER */
     header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
     .header-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.22em; color: var(--primary); }
     .header-title { font-size: 2.25rem; font-weight: 600; margin-top: 0.25rem; }
     .header-sub { font-size: 0.875rem; color: var(--muted); margin-top: 0.25rem; }
     .header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
-    select.field { width: auto; }
-
-    /* STAT CARDS */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
     .stat-card { padding: 1rem; }
     .stat-label { font-size: 0.68rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
@@ -111,7 +107,6 @@
     .warning { color: var(--warning); }
     .accent { color: var(--accent); }
 
-    /* FORM */
     .form-panel { padding: 1.25rem; margin-bottom: 1.5rem; }
     .form-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
     .form-title { font-size: 1.125rem; font-weight: 600; }
@@ -120,28 +115,17 @@
     .date-input-wrap { display: flex; flex-direction: column; gap: 0.375rem; }
     .field-label { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
     .date-btns { display: flex; gap: 0.375rem; padding-bottom: 2px; }
-
     .section-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin-bottom: 0.5rem; }
-
     .tickets-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
     .ticket-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; }
     .ticket-suffix { font-size: 0.65rem; color: var(--muted); margin-top: 0.375rem; }
-
     .costs-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
     .field-wrap { display: flex; flex-direction: column; gap: 0.375rem; }
-    .field-suffix { font-size: 0.65rem; color: var(--muted); opacity: 0.8; }
-
-    .preview-bar {
-      margin-top: 1.25rem;
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;
-      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 0.875rem 1rem;
-    }
+    .preview-bar { margin-top: 1.25rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.875rem 1rem; }
     .preview-nums { display: flex; flex-wrap: wrap; gap: 1.5rem; font-size: 0.875rem; }
     .preview-actions { display: flex; align-items: center; gap: 0.5rem; }
     .muted { color: var(--muted); }
 
-    /* TABLE */
     .bottom-grid { display: grid; gap: 1.5rem; grid-template-columns: 2fr 1fr; }
     @media (max-width: 900px) { .bottom-grid { grid-template-columns: 1fr; } }
     .table-wrap { overflow-x: auto; }
@@ -152,10 +136,8 @@
     td { padding: 0.75rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(255,255,255,0.025); }
-    td.tabular { font-variant-numeric: tabular-nums; }
     .note-text { display: block; font-size: 0.7rem; color: var(--muted); }
 
-    /* COST BREAKDOWN */
     .cost-panel { padding: 1.25rem; }
     .cost-row { margin-bottom: 0.75rem; }
     .cost-row-label { display: flex; align-items: baseline; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; }
@@ -164,32 +146,44 @@
     .cost-stats { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1.25rem; font-size: 0.875rem; }
     .cost-stat-row { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
 
-    /* SETTINGS */
     .settings-panel { padding: 1.25rem; margin-bottom: 1.5rem; }
     .tickets-settings-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
     .ticket-setting-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; }
     .ticket-setting-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; }
-    .ticket-setting-actions { display: flex; justify-content: flex-end; margin-top: 0.5rem; gap: 0.5rem; }
+    .ticket-setting-actions { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
 
-    /* EMPTY */
     .empty { padding: 2.5rem; text-align: center; font-size: 0.875rem; color: var(--muted); }
     .empty small { display: block; margin-top: 0.5rem; font-size: 0.75rem; }
-
     .footer { text-align: center; font-size: 0.72rem; color: var(--muted); margin-top: 2rem; padding-bottom: 2rem; }
+    .cloud-badge { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.7rem; color: var(--positive); background: rgba(94,240,160,0.08); border: 1px solid rgba(94,240,160,0.2); border-radius: 999px; padding: 0.2rem 0.6rem; }
 
-    @media (max-width: 640px) {
-      .header-title { font-size: 1.75rem; }
-      .bottom-grid { grid-template-columns: 1fr; }
-    }
+    select.field { width: auto; }
+    @media (max-width: 640px) { .header-title { font-size: 1.75rem; } }
   </style>
 </head>
 <body>
+
+<!-- LOADING -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <p class="loading-text">Conectando ao banco de dados...</p>
+</div>
+
+<!-- SYNC INDICATOR -->
+<div id="syncIndicator">
+  <div class="sync-dot"></div>
+  <span>Salvando...</span>
+</div>
+
 <div class="container">
   <header>
     <div>
       <p class="header-label">Operação · controle diário</p>
       <h1 class="header-title">Controle Financeiro</h1>
-      <p class="header-sub">Vendas por ticket, gastos e lucro real — dia a dia.</p>
+      <p class="header-sub">
+        Vendas por ticket, gastos e lucro real — dia a dia.
+        <span class="cloud-badge" style="margin-left:0.5rem;">☁️ Sincronizado na nuvem</span>
+      </p>
     </div>
     <div class="header-actions">
       <select class="field" id="monthFilter" onchange="renderAll()">
@@ -200,10 +194,8 @@
     </div>
   </header>
 
-  <!-- STAT CARDS -->
   <div class="stats-grid" id="statsGrid"></div>
 
-  <!-- SETTINGS PANEL -->
   <div class="panel settings-panel" id="settingsPanel" style="display:none; margin-bottom:1.5rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
       <div>
@@ -215,7 +207,6 @@
     <div class="tickets-settings-grid" id="ticketsSettingsGrid"></div>
   </div>
 
-  <!-- ENTRY FORM -->
   <div class="panel form-panel" id="formPanel">
     <div class="form-header">
       <div>
@@ -225,7 +216,7 @@
       <div class="date-row">
         <div class="date-input-wrap">
           <span class="field-label">Data do lançamento</span>
-          <input type="date" class="field" id="entryDate" style="width:160px;" />
+          <input type="date" class="field" id="entryDate" style="width:160px;" onchange="updatePreview()" />
         </div>
         <div class="date-btns">
           <button class="btn btn-sm" onclick="setDateToday()">Hoje</button>
@@ -234,15 +225,12 @@
       </div>
     </div>
 
-    <!-- Vendas -->
     <p class="section-label">Vendas por ticket</p>
     <div class="tickets-grid" id="salesGrid" style="margin-bottom:1.25rem;"></div>
 
-    <!-- Gastos -->
     <p class="section-label">Gastos do dia</p>
     <div class="costs-grid" id="costsGrid" style="margin-bottom:1.25rem;"></div>
 
-    <!-- Nota -->
     <div id="noteWrap" style="display:none;margin-bottom:1rem;">
       <div class="field-wrap">
         <span class="field-label">Observação do dia</span>
@@ -250,7 +238,6 @@
       </div>
     </div>
 
-    <!-- Preview & Actions -->
     <div class="preview-bar">
       <div class="preview-nums">
         <span><span class="muted">Retorno líquido: </span><strong class="positive" id="previewRevenue">R$ 0,00</strong></span>
@@ -265,9 +252,7 @@
     </div>
   </div>
 
-  <!-- BOTTOM GRID -->
   <div class="bottom-grid">
-    <!-- TABLE -->
     <div class="panel" id="tablePanel">
       <div class="table-wrap">
         <table id="entriesTable">
@@ -281,7 +266,6 @@
       </div>
     </div>
 
-    <!-- COST BREAKDOWN -->
     <div class="panel cost-panel">
       <h2 class="form-title" style="margin-bottom:0.25rem;">Para onde vai o dinheiro</h2>
       <p class="form-sub">Distribuição dos gastos no período.</p>
@@ -290,14 +274,16 @@
     </div>
   </div>
 
-  <p class="footer">Os dados ficam salvos neste navegador. Use "Exportar CSV" para backup ou para abrir no Excel.</p>
+  <p class="footer">Dados sincronizados em tempo real via Supabase ☁️ — use "Exportar CSV" para backup no Excel.</p>
 </div>
 
 <script>
-// ─── DATA & STORAGE ─────────────────────────────────────────────────────────
-const KEY_TICKETS = 'op-financeiro:tickets:v2';
-const KEY_ENTRIES = 'op-financeiro:entries:v1';
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://cximawtciwlpnctracul.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_4zFF2Pdtr1eAod9pHBwtuA_qYDDEuJK';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ─── STATE ───────────────────────────────────────────────────────────────────
 const DEFAULT_TICKETS = [
   { id: 't247', label: 'R$ 247', price: 247, net: 128 },
   { id: 't297', label: 'R$ 297', price: 297, net: 154 },
@@ -305,22 +291,14 @@ const DEFAULT_TICKETS = [
   { id: 't397', label: 'R$ 397', price: 397, net: 206 },
 ];
 
-let tickets = loadTickets();
-let entries = loadEntries();
+let tickets = [];
+let entries = [];
 let editingId = null;
 let showSettings = false;
 let showNote = false;
+let syncTimeout = null;
 
-function loadTickets() {
-  try { const r = JSON.parse(localStorage.getItem(KEY_TICKETS)); return Array.isArray(r) && r.length ? r : DEFAULT_TICKETS; } catch { return DEFAULT_TICKETS; }
-}
-function loadEntries() {
-  try { const r = JSON.parse(localStorage.getItem(KEY_ENTRIES)); return Array.isArray(r) ? r : []; } catch { return []; }
-}
-function saveTickets() { localStorage.setItem(KEY_TICKETS, JSON.stringify(tickets)); }
-function saveEntries() { localStorage.setItem(KEY_ENTRIES, JSON.stringify(entries)); }
-
-// ─── HELPERS ────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function n(v) { const x = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(x) ? x : 0; }
 function brl(v) { return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }); }
 function pct(v) { return `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`; }
@@ -330,25 +308,26 @@ function monthLabel(k) {
   const [y, m] = k.split('-');
   return `${names[+m - 1] ?? m} / ${y}`;
 }
-function formatDate(d) {
-  const [y, m, day] = d.split('-');
-  return `${day}/${m}/${y.slice(-2)}`;
-}
+function formatDate(d) { const [y, m, day] = d.split('-'); return `${day}/${m}/${y.slice(-2)}`; }
 function localDateStr(offsetDays = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function uuid() { return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now().toString(36); }
-function emptyEntry(date) {
-  return { id: uuid(), date: date ?? localDateStr(), sales: {}, adSpend: 0, automationCost: 0, creativeCost: 0, frustratedCost: 0, otherCost: 0, note: '' };
+
+function showSync() {
+  const el = document.getElementById('syncIndicator');
+  el.classList.add('show');
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(() => el.classList.remove('show'), 2000);
 }
 
-// ─── METRICS ────────────────────────────────────────────────────────────────
+// ─── METRICS ─────────────────────────────────────────────────────────────────
 function entryMetrics(entry) {
   let units = 0, gross = 0, revenue = 0;
   for (const t of tickets) {
-    const q = +( entry.sales[t.id] ?? 0);
+    const q = +(entry.sales[t.id] ?? 0);
     if (!q) continue;
     units += q; gross += q * t.price; revenue += q * t.net;
   }
@@ -359,38 +338,55 @@ function entryMetrics(entry) {
 }
 function sumMetrics(list) {
   let units=0, gross=0, revenue=0, costs=0, ads=0;
-  for (const e of list) {
-    const m = entryMetrics(e);
-    units += m.units; gross += m.gross; revenue += m.revenue; costs += m.costs; ads += n(e.adSpend);
-  }
+  for (const e of list) { const m = entryMetrics(e); units+=m.units; gross+=m.gross; revenue+=m.revenue; costs+=m.costs; ads+=n(e.adSpend); }
   const profit = revenue - costs;
-  return { units, gross, revenue, costs, profit, roas: ads > 0 ? revenue / ads : 0, margin: revenue > 0 ? profit / revenue : 0, cpa: units > 0 ? ads / units : 0 };
+  return { units, gross, revenue, costs, profit, roas: ads > 0 ? revenue/ads : 0, margin: revenue > 0 ? profit/revenue : 0, cpa: units > 0 ? ads/units : 0 };
 }
 function costBreakdown(list) {
-  return list.reduce((a, e) => ({
-    adSpend: a.adSpend + n(e.adSpend),
-    automationCost: a.automationCost + n(e.automationCost),
-    creativeCost: a.creativeCost + n(e.creativeCost),
-    frustratedCost: a.frustratedCost + n(e.frustratedCost),
-    otherCost: a.otherCost + n(e.otherCost),
-  }), { adSpend:0, automationCost:0, creativeCost:0, frustratedCost:0, otherCost:0 });
+  return list.reduce((a, e) => ({ adSpend: a.adSpend+n(e.adSpend), automationCost: a.automationCost+n(e.automationCost), creativeCost: a.creativeCost+n(e.creativeCost), frustratedCost: a.frustratedCost+n(e.frustratedCost), otherCost: a.otherCost+n(e.otherCost) }), { adSpend:0, automationCost:0, creativeCost:0, frustratedCost:0, otherCost:0 });
 }
 
-// ─── DATE HELPERS ────────────────────────────────────────────────────────────
+// ─── SUPABASE CRUD ────────────────────────────────────────────────────────────
+async function loadFromSupabase() {
+  const [{ data: t }, { data: e }] = await Promise.all([
+    sb.from('tickets').select('*'),
+    sb.from('entries').select('*')
+  ]);
+  tickets = (t && t.length) ? t : DEFAULT_TICKETS;
+  entries = e ?? [];
+  if (!t || !t.length) await sb.from('tickets').upsert(DEFAULT_TICKETS);
+}
+
+async function upsertTicket(ticket) {
+  showSync();
+  await sb.from('tickets').upsert(ticket);
+}
+async function deleteTicketFromDB(id) {
+  showSync();
+  await sb.from('tickets').delete().eq('id', id);
+}
+async function upsertEntry(entry) {
+  showSync();
+  await sb.from('entries').upsert(entry);
+}
+async function deleteEntryFromDB(id) {
+  showSync();
+  await sb.from('entries').delete().eq('id', id);
+}
+
+// ─── DATE ─────────────────────────────────────────────────────────────────────
 function setDateToday() { document.getElementById('entryDate').value = localDateStr(0); updatePreview(); }
 function setDateYesterday() { document.getElementById('entryDate').value = localDateStr(-1); updatePreview(); }
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
-let draft = emptyEntry();
-
+// ─── FORM ─────────────────────────────────────────────────────────────────────
+let draft = {};
 function getSaleValue(tid) { return n(document.getElementById('sale_'+tid)?.value ?? 0); }
 function getCostValue(id) { return n(document.getElementById(id)?.value ?? 0); }
-
 function buildDraftFromForm() {
   const sales = {};
   for (const t of tickets) sales[t.id] = Math.max(0, Math.round(getSaleValue(t.id)));
   return {
-    ...draft,
+    id: draft.id || uuid(),
     date: document.getElementById('entryDate').value || localDateStr(),
     sales,
     adSpend: getCostValue('c_adSpend'),
@@ -402,7 +398,6 @@ function buildDraftFromForm() {
   };
 }
 
-// ─── RENDER HELPERS ───────────────────────────────────────────────────────────
 function updatePreview() {
   const e = buildDraftFromForm();
   const m = entryMetrics(e);
@@ -413,173 +408,79 @@ function updatePreview() {
   pp.className = m.profit >= 0 ? 'positive' : 'negative';
 }
 
+// ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderSalesGrid() {
-  const g = document.getElementById('salesGrid');
-  g.innerHTML = '';
+  const g = document.getElementById('salesGrid'); g.innerHTML = '';
   for (const t of tickets) {
-    const val = draft.sales[t.id] ?? 0;
-    const liquid = val * t.net;
+    const val = draft.sales?.[t.id] ?? 0;
     const pctVal = t.price ? Math.round((t.net / t.price) * 100) : 0;
-    const card = document.createElement('div');
-    card.className = 'ticket-card';
-    card.innerHTML = `
-      <div class="field-wrap">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span class="field-label">${t.label}</span>
-          <span class="field-suffix">recebe ${brl(t.net)}${t.price ? ` · ${pctVal}%` : ''}</span>
-        </div>
-        <input type="number" class="field" id="sale_${t.id}" min="0" step="1" value="${val}" oninput="updatePreview()" onfocus="this.select()" />
-      </div>
-      <p class="ticket-suffix">Líquido: ${brl(liquid)}</p>`;
+    const card = document.createElement('div'); card.className = 'ticket-card';
+    card.innerHTML = `<div class="field-wrap"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="field-label">${t.label}</span><span style="font-size:0.65rem;color:var(--muted)">recebe ${brl(t.net)}${t.price?` · ${pctVal}%`:''}</span></div><input type="number" class="field" id="sale_${t.id}" min="0" step="1" value="${val}" oninput="updatePreview()" onfocus="this.select()" /></div><p class="ticket-suffix">Líquido: ${brl(val * t.net)}</p>`;
     g.appendChild(card);
   }
 }
 
 function renderCostsGrid() {
-  const g = document.getElementById('costsGrid');
-  g.innerHTML = `
-    <div class="field-wrap">
-      <span class="field-label">Fatura de anúncios (acumulada)</span>
-      <input type="number" class="field" id="c_adSpend" min="0" step="0.01" value="${draft.adSpend}" oninput="updatePreview()" onfocus="this.select()" />
-    </div>
-    <div class="field-wrap">
-      <span class="field-label">Plataforma de automação</span>
-      <input type="number" class="field" id="c_automationCost" min="0" step="0.01" value="${draft.automationCost}" oninput="updatePreview()" onfocus="this.select()" />
-    </div>
-    <div class="field-wrap">
-      <span class="field-label">Criativos</span>
-      <input type="number" class="field" id="c_creativeCost" min="0" step="0.01" value="${draft.creativeCost}" oninput="updatePreview()" onfocus="this.select()" />
-    </div>
-    <div class="field-wrap">
-      <span class="field-label">Pedidos frustrados</span>
-      <input type="number" class="field" id="c_frustratedCost" min="0" step="0.01" value="${draft.frustratedCost}" oninput="updatePreview()" onfocus="this.select()" />
-    </div>
-    <div class="field-wrap">
-      <span class="field-label">Outros</span>
-      <input type="number" class="field" id="c_otherCost" min="0" step="0.01" value="${draft.otherCost}" oninput="updatePreview()" onfocus="this.select()" />
-    </div>`;
+  document.getElementById('costsGrid').innerHTML = `
+    <div class="field-wrap"><span class="field-label">Fatura de anúncios (acumulada)</span><input type="number" class="field" id="c_adSpend" min="0" step="0.01" value="${draft.adSpend??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
+    <div class="field-wrap"><span class="field-label">Plataforma de automação</span><input type="number" class="field" id="c_automationCost" min="0" step="0.01" value="${draft.automationCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
+    <div class="field-wrap"><span class="field-label">Criativos</span><input type="number" class="field" id="c_creativeCost" min="0" step="0.01" value="${draft.creativeCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
+    <div class="field-wrap"><span class="field-label">Pedidos frustrados</span><input type="number" class="field" id="c_frustratedCost" min="0" step="0.01" value="${draft.frustratedCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>
+    <div class="field-wrap"><span class="field-label">Outros</span><input type="number" class="field" id="c_otherCost" min="0" step="0.01" value="${draft.otherCost??0}" oninput="updatePreview()" onfocus="this.select()" /></div>`;
 }
 
 function renderStatsGrid(totals, costs) {
-  const g = document.getElementById('statsGrid');
-  g.innerHTML = `
-    <div class="panel stat-card">
-      <p class="stat-label">Retorno líquido (comissão)</p>
-      <p class="stat-value positive">${brl(totals.revenue)}</p>
-      <p class="stat-hint">Faturamento bruto ${brl(totals.gross)}</p>
-    </div>
-    <div class="panel stat-card">
-      <p class="stat-label">Gastos totais</p>
-      <p class="stat-value warning">${brl(totals.costs)}</p>
-      <p class="stat-hint">Anúncios ${brl(costs.adSpend)}</p>
-    </div>
-    <div class="panel stat-card">
-      <p class="stat-label">Lucro líquido</p>
-      <p class="stat-value ${totals.profit >= 0 ? 'positive' : 'negative'}">${brl(totals.profit)}</p>
-      <p class="stat-hint">Margem ${pct(totals.margin)}</p>
-    </div>
-    <div class="panel stat-card">
-      <p class="stat-label">ROAS · vendas</p>
-      <p class="stat-value accent">${totals.roas ? totals.roas.toFixed(2) + 'x' : '—'}</p>
-      <p class="stat-hint">${totals.units} pedidos · CPA ${totals.cpa ? brl(totals.cpa) : '—'}</p>
-    </div>`;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="panel stat-card"><p class="stat-label">Retorno líquido (comissão)</p><p class="stat-value positive">${brl(totals.revenue)}</p><p class="stat-hint">Faturamento bruto ${brl(totals.gross)}</p></div>
+    <div class="panel stat-card"><p class="stat-label">Gastos totais</p><p class="stat-value warning">${brl(totals.costs)}</p><p class="stat-hint">Anúncios ${brl(costs.adSpend)}</p></div>
+    <div class="panel stat-card"><p class="stat-label">Lucro líquido</p><p class="stat-value ${totals.profit>=0?'positive':'negative'}">${brl(totals.profit)}</p><p class="stat-hint">Margem ${pct(totals.margin)}</p></div>
+    <div class="panel stat-card"><p class="stat-label">ROAS · vendas</p><p class="stat-value accent">${totals.roas?totals.roas.toFixed(2)+'x':'—'}</p><p class="stat-hint">${totals.units} pedidos · CPA ${totals.cpa?brl(totals.cpa):'—'}</p></div>`;
 }
 
 function renderTable(filtered) {
-  const head = document.getElementById('tableHead');
-  const body = document.getElementById('tableBody');
-  const empty = document.getElementById('emptyState');
-
-  head.innerHTML = `<th>Data</th>${tickets.map(t => `<th class="right">${t.label}</th>`).join('')}<th class="right">Retorno</th><th class="right">Anúncios</th><th class="right">Custos</th><th class="right">Lucro</th><th class="right">ROAS</th><th></th>`;
-
-  if (!filtered.length) {
-    body.innerHTML = ''; empty.style.display = '';
-    return;
-  }
-  empty.style.display = 'none';
-  body.innerHTML = filtered.map(e => {
+  document.getElementById('tableHead').innerHTML = `<th>Data</th>${tickets.map(t=>`<th class="right">${t.label}</th>`).join('')}<th class="right">Retorno</th><th class="right">Anúncios</th><th class="right">Custos</th><th class="right">Lucro</th><th class="right">ROAS</th><th></th>`;
+  if (!filtered.length) { document.getElementById('tableBody').innerHTML=''; document.getElementById('emptyState').style.display=''; return; }
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('tableBody').innerHTML = filtered.map(e => {
     const m = entryMetrics(e);
-    return `<tr>
-      <td><strong>${formatDate(e.date)}</strong>${e.note ? `<span class="note-text">${e.note}</span>` : ''}</td>
-      ${tickets.map(t => `<td class="right tabular muted">${e.sales[t.id] ?? 0}</td>`).join('')}
-      <td class="right tabular positive">${brl(m.revenue)}</td>
-      <td class="right tabular muted">${brl(n(e.adSpend))}</td>
-      <td class="right tabular warning">${brl(m.costs)}</td>
-      <td class="right tabular ${m.profit >= 0 ? 'positive' : 'negative'}" style="font-weight:600;">${brl(m.profit)}</td>
-      <td class="right tabular">${m.roas ? m.roas.toFixed(2) + 'x' : '—'}</td>
-      <td class="right" style="white-space:nowrap;">
-        <button class="btn-edit" onclick="editEntry('${e.id}')">Editar</button>
-        <button class="btn-danger" onclick="deleteEntry('${e.id}')">Excluir</button>
-      </td>
-    </tr>`;
+    return `<tr><td><strong>${formatDate(e.date)}</strong>${e.note?`<span class="note-text">${e.note}</span>`:''}</td>${tickets.map(t=>`<td class="right muted">${e.sales[t.id]??0}</td>`).join('')}<td class="right positive">${brl(m.revenue)}</td><td class="right muted">${brl(n(e.adSpend))}</td><td class="right warning">${brl(m.costs)}</td><td class="right ${m.profit>=0?'positive':'negative'}" style="font-weight:600;">${brl(m.profit)}</td><td class="right">${m.roas?m.roas.toFixed(2)+'x':'—'}</td><td style="white-space:nowrap;text-align:right;"><button class="btn-edit" onclick="editEntry('${e.id}')">Editar</button><button class="btn-danger" onclick="deleteEntry('${e.id}')">Excluir</button></td></tr>`;
   }).join('');
 }
 
-function renderCostBreakdown(totals, costs, filtered) {
-  const rows = [
-    { label: 'Anúncios / tráfego', value: costs.adSpend },
-    { label: 'Criativos', value: costs.creativeCost },
-    { label: 'Plataforma de automação', value: costs.automationCost },
-    { label: 'Pedidos frustrados', value: costs.frustratedCost },
-    { label: 'Outros', value: costs.otherCost },
-  ].sort((a, b) => b.value - a.value);
-
-  document.getElementById('costBreakdown').innerHTML = rows.map(row => {
-    const share = totals.costs > 0 ? row.value / totals.costs : 0;
-    return `<div class="cost-row">
-      <div class="cost-row-label"><span class="muted">${row.label}</span><span class="tabular">${brl(row.value)}</span></div>
-      <div class="cost-bar-bg"><div class="cost-bar-fill" style="width:${Math.min(100, share*100)}%"></div></div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('costStats').innerHTML = `
-    <div class="cost-stat-row"><span class="muted">Pedidos no período</span><span class="tabular">${totals.units}</span></div>
-    <div class="cost-stat-row"><span class="muted">Ticket médio líquido</span><span class="tabular">${totals.units ? brl(totals.revenue / totals.units) : '—'}</span></div>
-    <div class="cost-stat-row"><span class="muted">Lucro por pedido</span><span class="tabular">${totals.units ? brl(totals.profit / totals.units) : '—'}</span></div>`;
+function renderCostBreakdown(totals, costs) {
+  const rows = [{ label:'Anúncios / tráfego', value:costs.adSpend },{ label:'Criativos', value:costs.creativeCost },{ label:'Plataforma de automação', value:costs.automationCost },{ label:'Pedidos frustrados', value:costs.frustratedCost },{ label:'Outros', value:costs.otherCost }].sort((a,b)=>b.value-a.value);
+  document.getElementById('costBreakdown').innerHTML = rows.map(row => { const s = totals.costs>0?row.value/totals.costs:0; return `<div class="cost-row"><div class="cost-row-label"><span class="muted">${row.label}</span><span>${brl(row.value)}</span></div><div class="cost-bar-bg"><div class="cost-bar-fill" style="width:${Math.min(100,s*100)}%"></div></div></div>`; }).join('');
+  document.getElementById('costStats').innerHTML = `<div class="cost-stat-row"><span class="muted">Pedidos no período</span><span>${totals.units}</span></div><div class="cost-stat-row"><span class="muted">Ticket médio líquido</span><span>${totals.units?brl(totals.revenue/totals.units):'—'}</span></div><div class="cost-stat-row"><span class="muted">Lucro por pedido</span><span>${totals.units?brl(totals.profit/totals.units):'—'}</span></div>`;
 }
 
 function renderMonthFilter() {
   const sel = document.getElementById('monthFilter');
   const current = sel.value;
-  const months = [...new Set(entries.map(e => monthKey(e.date)))].sort().reverse();
-  sel.innerHTML = `<option value="all">Todo o período</option>` + months.map(m => `<option value="${m}" ${m === current ? 'selected' : ''}>${monthLabel(m)}</option>`).join('');
+  const months = [...new Set(entries.map(e=>monthKey(e.date)))].sort().reverse();
+  sel.innerHTML = `<option value="all">Todo o período</option>` + months.map(m=>`<option value="${m}" ${m===current?'selected':''}>${monthLabel(m)}</option>`).join('');
 }
 
 function renderSettingsPanel() {
-  const g = document.getElementById('ticketsSettingsGrid');
-  g.innerHTML = tickets.map((t, i) => `
+  document.getElementById('ticketsSettingsGrid').innerHTML = tickets.map((t, i) => `
     <div class="ticket-setting-card">
-      <div class="field-wrap">
-        <span class="field-label">Nome do ticket</span>
-        <input class="field" value="${t.label}" oninput="updateTicket(${i},'label',this.value)" />
-      </div>
+      <div class="field-wrap"><span class="field-label">Nome do ticket</span><input class="field" value="${t.label}" oninput="updateTicketField(${i},'label',this.value)" /></div>
       <div class="ticket-setting-row">
-        <div class="field-wrap">
-          <span class="field-label">Preço (R$)</span>
-          <input type="number" class="field" min="0" step="1" value="${t.price}" oninput="updateTicket(${i},'price',this.value)" onfocus="this.select()" />
-        </div>
-        <div class="field-wrap">
-          <span class="field-label">Líquido (R$)</span>
-          <input type="number" class="field" min="0" step="0.01" value="${t.net}" oninput="updateTicket(${i},'net',this.value)" onfocus="this.select()" />
-        </div>
+        <div class="field-wrap"><span class="field-label">Preço (R$)</span><input type="number" class="field" min="0" step="1" value="${t.price}" oninput="updateTicketField(${i},'price',this.value)" onfocus="this.select()" /></div>
+        <div class="field-wrap"><span class="field-label">Líquido (R$)</span><input type="number" class="field" min="0" step="0.01" value="${t.net}" oninput="updateTicketField(${i},'net',this.value)" onfocus="this.select()" /></div>
       </div>
-      <div class="ticket-setting-actions">
-        <button class="btn-danger" onclick="removeTicket(${i})" style="font-size:0.7rem;">Remover</button>
-      </div>
+      <div class="ticket-setting-actions"><button class="btn-danger" onclick="removeTicket(${i})">Remover</button></div>
     </div>`).join('');
 }
 
-// ─── MAIN RENDER ─────────────────────────────────────────────────────────────
 function renderAll() {
   const month = document.getElementById('monthFilter').value;
-  const filtered = entries.filter(e => month === 'all' || monthKey(e.date) === month).sort((a, b) => b.date.localeCompare(a.date));
+  const filtered = entries.filter(e=>month==='all'||monthKey(e.date)===month).sort((a,b)=>b.date.localeCompare(a.date));
   const totals = sumMetrics(filtered);
   const costs = costBreakdown(filtered);
-
   renderMonthFilter();
   renderStatsGrid(totals, costs);
   renderTable(filtered);
-  renderCostBreakdown(totals, costs, filtered);
+  renderCostBreakdown(totals, costs);
   renderSalesGrid();
   renderCostsGrid();
   updatePreview();
@@ -587,56 +488,54 @@ function renderAll() {
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
-function saveEntry() {
+async function saveEntry() {
   const e = buildDraftFromForm();
   if (!e.date) { alert('Selecione uma data válida!'); return; }
+  document.getElementById('saveBtn').disabled = true;
   if (editingId) {
     entries = entries.map(x => x.id === editingId ? { ...e, id: editingId } : x);
+    await upsertEntry({ ...e, id: editingId });
     editingId = null;
   } else {
     entries.push(e);
+    await upsertEntry(e);
   }
-  saveEntries();
-  draft = emptyEntry();
+  draft = {};
   document.getElementById('formTitle').textContent = 'Novo lançamento do dia';
   document.getElementById('saveBtn').textContent = 'Adicionar dia';
+  document.getElementById('saveBtn').disabled = false;
   document.getElementById('cancelBtn').style.display = 'none';
   document.getElementById('entryDate').value = localDateStr();
+  document.getElementById('entryNote').value = '';
   renderAll();
 }
 
 function editEntry(id) {
-  const e = entries.find(x => x.id === id);
-  if (!e) return;
-  editingId = id;
-  draft = { ...e };
+  const e = entries.find(x=>x.id===id); if (!e) return;
+  editingId = id; draft = { ...e };
   document.getElementById('entryDate').value = e.date;
   document.getElementById('formTitle').textContent = 'Editando lançamento';
   document.getElementById('saveBtn').textContent = 'Salvar alterações';
   document.getElementById('cancelBtn').style.display = '';
   document.getElementById('entryNote').value = e.note ?? '';
-  renderSalesGrid();
-  renderCostsGrid();
-  updatePreview();
+  renderSalesGrid(); renderCostsGrid(); updatePreview();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function cancelEdit() {
-  editingId = null;
-  draft = emptyEntry();
+  editingId = null; draft = {};
   document.getElementById('formTitle').textContent = 'Novo lançamento do dia';
   document.getElementById('saveBtn').textContent = 'Adicionar dia';
   document.getElementById('cancelBtn').style.display = 'none';
   document.getElementById('entryDate').value = localDateStr();
-  renderSalesGrid();
-  renderCostsGrid();
-  updatePreview();
+  document.getElementById('entryNote').value = '';
+  renderSalesGrid(); renderCostsGrid(); updatePreview();
 }
 
-function deleteEntry(id) {
+async function deleteEntry(id) {
   if (!confirm('Excluir este lançamento?')) return;
-  entries = entries.filter(e => e.id !== id);
-  saveEntries();
+  entries = entries.filter(e=>e.id!==id);
+  await deleteEntryFromDB(id);
   renderAll();
 }
 
@@ -653,48 +552,51 @@ function toggleNote() {
   document.getElementById('toggleNote').textContent = showNote ? 'Ocultar nota' : '+ Nota';
 }
 
-function addTicket() {
-  const id = 't' + Date.now();
-  tickets.push({ id, label: 'Novo ticket', price: 0, net: 0 });
-  saveTickets();
-  renderSettingsPanel();
-  renderSalesGrid();
+async function addTicket() {
+  const t = { id: 't'+Date.now(), label: 'Novo ticket', price: 0, net: 0 };
+  tickets.push(t);
+  await upsertTicket(t);
+  renderSettingsPanel(); renderSalesGrid();
 }
 
-function removeTicket(i) {
+async function removeTicket(i) {
   if (tickets.length <= 1) { alert('Deve ter ao menos um ticket!'); return; }
   if (!confirm('Remover este ticket?')) return;
+  const id = tickets[i].id;
   tickets.splice(i, 1);
-  saveTickets();
-  renderSettingsPanel();
-  renderSalesGrid();
+  await deleteTicketFromDB(id);
+  renderSettingsPanel(); renderSalesGrid();
 }
 
-function updateTicket(i, field, value) {
+let ticketSaveTimeout = null;
+function updateTicketField(i, field, value) {
   tickets[i][field] = field === 'label' ? value : n(value);
-  saveTickets();
+  clearTimeout(ticketSaveTimeout);
+  ticketSaveTimeout = setTimeout(() => upsertTicket(tickets[i]), 800);
 }
 
 function exportCsv() {
   const month = document.getElementById('monthFilter').value;
-  const filtered = entries.filter(e => month === 'all' || monthKey(e.date) === month).sort((a, b) => a.date.localeCompare(b.date));
-  const head = ['Data', ...tickets.map(t => `Vendas ${t.label}`), 'Faturamento bruto', 'Comissao liquida', 'Anuncios', 'Automacao', 'Criativos', 'Pedidos frustrados', 'Outros', 'Custo total', 'Lucro', 'ROAS'];
-  const rows = filtered.map(e => {
-    const m = entryMetrics(e);
-    return [e.date, ...tickets.map(t => e.sales[t.id] ?? 0), m.gross.toFixed(2), m.revenue.toFixed(2), n(e.adSpend).toFixed(2), n(e.automationCost).toFixed(2), n(e.creativeCost).toFixed(2), n(e.frustratedCost).toFixed(2), n(e.otherCost).toFixed(2), m.costs.toFixed(2), m.profit.toFixed(2), m.roas.toFixed(2)];
-  });
-  const csv = [head, ...rows].map(r => r.join(';')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const filtered = entries.filter(e=>month==='all'||monthKey(e.date)===month).sort((a,b)=>a.date.localeCompare(b.date));
+  const head = ['Data',...tickets.map(t=>`Vendas ${t.label}`),'Faturamento bruto','Comissao liquida','Anuncios','Automacao','Criativos','Pedidos frustrados','Outros','Custo total','Lucro','ROAS'];
+  const rows = filtered.map(e => { const m=entryMetrics(e); return [e.date,...tickets.map(t=>e.sales[t.id]??0),m.gross.toFixed(2),m.revenue.toFixed(2),n(e.adSpend).toFixed(2),n(e.automationCost).toFixed(2),n(e.creativeCost).toFixed(2),n(e.frustratedCost).toFixed(2),n(e.otherCost).toFixed(2),m.costs.toFixed(2),m.profit.toFixed(2),m.roas.toFixed(2)]; });
+  const csv = [head,...rows].map(r=>r.join(';')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `controle-financeiro-${month === 'all' ? 'geral' : month}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  const a = document.createElement('a'); a.href=url; a.download=`controle-financeiro-${month==='all'?'geral':month}.csv`; a.click(); URL.revokeObjectURL(url);
 }
 
-// ─── INIT ────────────────────────────────────────────────────────────────────
-document.getElementById('entryDate').value = localDateStr();
-document.getElementById('entryDate').addEventListener('change', updatePreview);
-renderAll();
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    await loadFromSupabase();
+  } catch(e) {
+    console.error('Erro ao conectar ao Supabase:', e);
+  }
+  document.getElementById('entryDate').value = localDateStr();
+  renderAll();
+  document.getElementById('loadingOverlay').style.display = 'none';
+})();
 </script>
 </body>
 </html>
