@@ -39,17 +39,17 @@ export function EntryForm({
   const setSale = (id: string, value: string) =>
     onChange({ ...entry, sales: { ...entry.sales, [id]: Math.max(0, Math.round(n(value))) } });
 
-  const setToday = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    set({ date: today });
+  const getLocalDateString = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
-  const setYesterday = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const yesterday = d.toISOString().slice(0, 10);
-    set({ date: yesterday });
-  };
+  const setToday = () => set({ date: getLocalDateString(0) });
+  const setYesterday = () => set({ date: getLocalDateString(-1) });
 
   const numberInput = (value: number, onValue: (v: string) => void, step = "0.01") => (
     <input
@@ -74,37 +74,35 @@ export function EntryForm({
             Preencha as vendas por ticket e os gastos daquele dia.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <Field label="Data do lançamento">
-            <div className="flex items-center gap-2">
-              <input
-                className="field tabular-nums cursor-pointer font-medium"
-                type="date"
-                value={entry.date}
-                onChange={(e) => {
-                  if (e.target.value) set({ date: e.target.value });
-                }}
-              />
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={setToday}
-                  className="rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-surface-3 hover:text-primary"
-                  title="Selecionar data de Hoje"
-                >
-                  Hoje
-                </button>
-                <button
-                  type="button"
-                  onClick={setYesterday}
-                  className="rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-surface-3 hover:text-primary"
-                  title="Selecionar data de Ontem"
-                >
-                  Ontem
-                </button>
-              </div>
-            </div>
+            <input
+              className="field tabular-nums cursor-pointer font-medium"
+              type="date"
+              value={entry.date}
+              onChange={(e) => {
+                if (e.target.value) set({ date: e.target.value });
+              }}
+            />
           </Field>
+          <div className="flex items-center gap-1 pb-0.5">
+            <button
+              type="button"
+              onClick={setToday}
+              className="rounded-lg border border-border bg-surface-2 px-2.5 py-2 text-xs font-medium transition-colors hover:bg-surface-3 hover:text-primary"
+              title="Selecionar data de Hoje"
+            >
+              Hoje
+            </button>
+            <button
+              type="button"
+              onClick={setYesterday}
+              className="rounded-lg border border-border bg-surface-2 px-2.5 py-2 text-xs font-medium transition-colors hover:bg-surface-3 hover:text-primary"
+              title="Selecionar data de Ontem"
+            >
+              Ontem
+            </button>
+          </div>
         </div>
       </div>
 
