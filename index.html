@@ -348,30 +348,56 @@ function costBreakdown(list) {
 
 // ─── SUPABASE CRUD ────────────────────────────────────────────────────────────
 async function loadFromSupabase() {
-  const [{ data: t }, { data: e }] = await Promise.all([
-    sb.from('tickets').select('*'),
-    sb.from('entries').select('*')
-  ]);
-  tickets = (t && t.length) ? t : DEFAULT_TICKETS;
-  entries = e ?? [];
-  if (!t || !t.length) await sb.from('tickets').upsert(DEFAULT_TICKETS);
+  try {
+    const { data: t, error: tErr } = await sb.from('tickets').select('*');
+    const { data: e, error: eErr } = await sb.from('entries').select('*');
+    
+    if (tErr) {
+      alert('Supabase (carregar tickets): ' + tErr.message + '\nCódigo: ' + tErr.code);
+    }
+    if (eErr) {
+      alert('Supabase (carregar lançamentos): ' + eErr.message + '\nCódigo: ' + eErr.code);
+    }
+    
+    tickets = (t && t.length) ? t : DEFAULT_TICKETS;
+    entries = e ?? [];
+    
+    if (!t || !t.length) {
+      const { error } = await sb.from('tickets').upsert(DEFAULT_TICKETS);
+      if (error) console.error('Erro ao criar tickets padrão:', error);
+    }
+  } catch (err) {
+    alert('Erro geral ao conectar com Supabase: ' + err.message);
+  }
 }
 
 async function upsertTicket(ticket) {
   showSync();
-  await sb.from('tickets').upsert(ticket);
+  const { error } = await sb.from('tickets').upsert(ticket);
+  if (error) {
+    alert('Supabase (salvar ticket): ' + error.message + '\nDetalhe: ' + error.details);
+  }
 }
 async function deleteTicketFromDB(id) {
   showSync();
-  await sb.from('tickets').delete().eq('id', id);
+  const { error } = await sb.from('tickets').delete().eq('id', id);
+  if (error) {
+    alert('Supabase (excluir ticket): ' + error.message);
+  }
 }
 async function upsertEntry(entry) {
   showSync();
-  await sb.from('entries').upsert(entry);
+  const { error } = await sb.from('entries').upsert(entry);
+  if (error) {
+    alert('Supabase (salvar lançamento): ' + error.message + '\nDetalhe: ' + error.details + '\nDica: ' + error.hint);
+  }
 }
 async function deleteEntryFromDB(id) {
   showSync();
-  await sb.from('entries').delete().eq('id', id);
+  const { error } = await sb.from('entries').delete().eq('id', id);
+  if (error) {
+    alert('Supabase (excluir lançamento): ' + error.message);
+  }
 }
 
 // ─── DATE ─────────────────────────────────────────────────────────────────────
