@@ -135,18 +135,22 @@ export function entryMetrics(entry: DayEntry, tickets: Ticket[]): EntryMetrics {
     gross += q * t.price;
     revenue += q * t.net;
   }
-  const costs =
+  const totalCosts =
     n(entry.adSpend) +
     n(entry.automationCost) +
     n(entry.creativeCost) +
     n(entry.frustratedCost) +
     n(entry.otherCost);
-  const profit = revenue - costs;
+
+  // Zappcash (automationCost) e Criativos (creativeCost) NÃO reduzem o lucro líquido do dia
+  const directCosts = n(entry.adSpend) + n(entry.frustratedCost) + n(entry.otherCost);
+  const profit = revenue - directCosts;
+
   return {
     units,
     gross,
     revenue,
-    costs,
+    costs: totalCosts,
     profit,
     roas: n(entry.adSpend) > 0 ? revenue / n(entry.adSpend) : 0,
     margin: revenue > 0 ? profit / revenue : 0,
@@ -162,12 +166,13 @@ export function sumMetrics(entries: DayEntry[], tickets: Ticket[]): EntryMetrics
       acc.gross += m.gross;
       acc.revenue += m.revenue;
       acc.costs += m.costs;
+      acc.directCosts += n(e.adSpend) + n(e.frustratedCost) + n(e.otherCost);
       acc.ads += n(e.adSpend);
       return acc;
     },
-    { units: 0, gross: 0, revenue: 0, costs: 0, ads: 0 },
+    { units: 0, gross: 0, revenue: 0, costs: 0, directCosts: 0, ads: 0 },
   );
-  const profit = totals.revenue - totals.costs;
+  const profit = totals.revenue - totals.directCosts;
   return {
     units: totals.units,
     gross: totals.gross,

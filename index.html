@@ -641,14 +641,21 @@ function entryMetrics(entry) {
     units += q; gross += q * t.price; revenue += q * t.net;
   }
   const adSpend = n(entry.adSpend);
-  const costs = adSpend + n(entry.automationCost) + n(entry.creativeCost) + n(entry.frustratedCost) + n(entry.otherCost);
-  const profit = revenue - costs;
-  return { units, gross, revenue, costs, profit, roas: adSpend > 0 ? revenue / adSpend : 0, margin: revenue > 0 ? profit / revenue : 0, cpa: units > 0 ? adSpend / units : 0 };
+  const totalCosts = adSpend + n(entry.automationCost) + n(entry.creativeCost) + n(entry.frustratedCost) + n(entry.otherCost);
+  // Zappcash (automationCost) e Criativos (creativeCost) NÃO reduzem o lucro líquido do dia
+  const directCosts = adSpend + n(entry.frustratedCost) + n(entry.otherCost);
+  const profit = revenue - directCosts;
+  return { units, gross, revenue, costs: totalCosts, profit, roas: adSpend > 0 ? revenue / adSpend : 0, margin: revenue > 0 ? profit / revenue : 0, cpa: units > 0 ? adSpend / units : 0 };
 }
 function sumMetrics(list) {
-  let units=0, gross=0, revenue=0, costs=0, ads=0;
-  for (const e of list) { const m = entryMetrics(e); units+=m.units; gross+=m.gross; revenue+=m.revenue; costs+=m.costs; ads+=n(e.adSpend); }
-  const profit = revenue - costs;
+  let units=0, gross=0, revenue=0, costs=0, directCostsTotal=0, ads=0;
+  for (const e of list) {
+    const m = entryMetrics(e);
+    units+=m.units; gross+=m.gross; revenue+=m.revenue; costs+=m.costs;
+    directCostsTotal += (n(e.adSpend) + n(e.frustratedCost) + n(e.otherCost));
+    ads+=n(e.adSpend);
+  }
+  const profit = revenue - directCostsTotal;
   return { units, gross, revenue, costs, profit, roas: ads > 0 ? revenue/ads : 0, margin: revenue > 0 ? profit/revenue : 0, cpa: units > 0 ? ads/units : 0 };
 }
 function costBreakdown(list) {
