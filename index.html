@@ -825,57 +825,61 @@ function renderLossTracker(filtered) {
 
   const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
   const todayStr = localDateStr();
-  const todayEntry = sorted.find(e => e.date === todayStr) || sorted[sorted.length - 1];
+  const todayEntry = sorted.find(e => e.date === todayStr);
 
-  let runningDebt = 0;
-  const processed = [];
-
-  for (const entry of sorted) {
-    const isToday = entry.id === todayEntry.id;
+  const processed = sorted.map(entry => {
+    const isToday = entry.id === todayEntry?.id;
     const m = entryMetrics(entry);
-    const prevLoss = runningDebt;
+    const adSpend = n(entry.adSpend);
     let type = 'profit';
-    let coveredLoss = 0;
-
-    if (m.profit < 0) {
-      runningDebt += Math.abs(m.profit);
+    if (m.profit < 0 || (m.units === 0 && adSpend > 0)) {
       type = 'loss';
-    } else if (m.revenue > 0 && prevLoss > 0) {
-      coveredLoss = Math.min(m.revenue, prevLoss);
-      const remainingPrev = prevLoss - coveredLoss;
-      const extraComm = Math.max(0, m.revenue - prevLoss);
-      const todayUncoveredCost = Math.max(0, n(entry.adSpend) - extraComm);
-      runningDebt = remainingPrev + todayUncoveredCost;
-      type = runningDebt === 0 ? 'covered' : 'partial';
     }
-
-    processed.push({
+    return {
       date: entry.date,
       formattedDate: formatDate(entry.date),
-      adSpend: n(entry.adSpend),
+      adSpend,
       revenue: m.revenue,
       profit: m.profit,
-      prevLoss,
-      postLoss: runningDebt,
-      coveredLoss,
+      prevLoss: 0,
+      postLoss: 0,
+      coveredLoss: 0,
       isToday,
       type
-    });
-  }
+    };
+  });
 
-  const todayDetail = processed.find(d => d.isToday);
+  // Dias de prejuízo/zero vendas anteriores ao dia de hoje
+  const pastLossDays = processed.filter(d => !d.isToday && (d.profit < 0 || (d.revenue === 0 && d.adSpend > 0)));
+  const totalPrevLoss = pastLossDays.reduce((sum, d) => sum + Math.abs(d.profit > 0 ? 0 : d.profit || d.adSpend), 0);
+
   const todayMetrics = todayEntry ? entryMetrics(todayEntry) : { revenue: 0, units: 0 };
-  const totalPrevLoss = todayDetail ? todayDetail.prevLoss : 0;
   const todayRevenue = todayMetrics.revenue;
   const todayAdSpend = n(todayEntry?.adSpend ?? 0);
+
   const coveredPastLoss = Math.min(todayRevenue, totalPrevLoss);
   const remainingPastLoss = Math.max(0, totalPrevLoss - coveredPastLoss);
-  const totalUncovered = todayDetail ? todayDetail.postLoss : remainingPastLoss + todayAdSpend;
+  const extraComm = Math.max(0, todayRevenue - totalPrevLoss);
+  const todayUncoveredAdSpend = Math.max(0, todayAdSpend - extraComm);
+  const totalUncovered = remainingPastLoss + todayUncoveredAdSpend;
 
-  const pastLossDays = processed.filter(d => !d.isToday && d.profit < 0);
   const lossDayLabels = pastLossDays.map(d => d.formattedDate).join(' + ');
 
-  const recentChips = processed.filter(d => d.type === 'loss' || d.type === 'partial' || d.isToday).slice(-5);
+  let runningDebt = 0;
+  const recentChips = processed.map(d => {
+    const prev = runningDebt;
+    if (d.type === 'loss') {
+      runningDebt += Math.abs(d.profit > 0 ? 0 : d.profit || d.adSpend);
+    } else if (d.revenue > 0 && runningDebt > 0) {
+      runningDebt = Math.max(0, runningDebt - Math.min(d.revenue, runningDebt));
+    }
+    return {
+      ...d,
+      prevLoss: d.isToday ? totalPrevLoss : prev,
+      postLoss: d.isToday ? totalUncovered : runningDebt,
+      type: d.isToday ? (totalUncovered === 0 ? 'covered' : 'partial') : d.type
+    };
+  }).filter(d => d.type === 'loss' || d.type === 'partial' || d.isToday).slice(-5);
 
   container.innerHTML = `
     <div class="panel" style="padding:1.25rem;position:relative;overflow:hidden;">
