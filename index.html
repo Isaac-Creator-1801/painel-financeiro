@@ -501,6 +501,8 @@
 
   <div class="stats-grid" id="statsGrid"></div>
 
+  <div id="lossTrackerContainer" style="margin-bottom:1.5rem;"></div>
+
   <div class="panel settings-panel" id="settingsPanel" style="display:none; margin-bottom:1.5rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
       <div>
@@ -814,6 +816,162 @@ function renderSettingsPanel() {
     </div>`).join('');
 }
 
+function renderLossTracker(filtered) {
+  const container = document.getElementById('lossTrackerContainer');
+  if (!container || !filtered.length) {
+    if (container) container.innerHTML = '';
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+  const todayStr = localDateStr();
+  const todayEntry = sorted.find(e => e.date === todayStr) || sorted[sorted.length - 1];
+
+  let runningDebt = 0;
+  const processed = [];
+
+  for (const entry of sorted) {
+    const isToday = entry.id === todayEntry.id;
+    const m = entryMetrics(entry);
+    const prevLoss = runningDebt;
+    let type = 'profit';
+    let coveredLoss = 0;
+
+    if (m.profit < 0) {
+      runningDebt += Math.abs(m.profit);
+      type = 'loss';
+    } else if (m.revenue > 0 && prevLoss > 0) {
+      coveredLoss = Math.min(m.revenue, prevLoss);
+      const remainingPrev = prevLoss - coveredLoss;
+      const extraComm = Math.max(0, m.revenue - prevLoss);
+      const todayUncoveredCost = Math.max(0, n(entry.adSpend) - extraComm);
+      runningDebt = remainingPrev + todayUncoveredCost;
+      type = runningDebt === 0 ? 'covered' : 'partial';
+    }
+
+    processed.push({
+      date: entry.date,
+      formattedDate: formatDate(entry.date),
+      adSpend: n(entry.adSpend),
+      revenue: m.revenue,
+      profit: m.profit,
+      prevLoss,
+      postLoss: runningDebt,
+      coveredLoss,
+      isToday,
+      type
+    });
+  }
+
+  const todayDetail = processed.find(d => d.isToday);
+  const todayMetrics = todayEntry ? entryMetrics(todayEntry) : { revenue: 0, units: 0 };
+  const totalPrevLoss = todayDetail ? todayDetail.prevLoss : 0;
+  const todayRevenue = todayMetrics.revenue;
+  const todayAdSpend = n(todayEntry?.adSpend ?? 0);
+  const coveredPastLoss = Math.min(todayRevenue, totalPrevLoss);
+  const remainingPastLoss = Math.max(0, totalPrevLoss - coveredPastLoss);
+  const totalUncovered = todayDetail ? todayDetail.postLoss : remainingPastLoss + todayAdSpend;
+
+  const pastLossDays = processed.filter(d => !d.isToday && d.profit < 0);
+  const lossDayLabels = pastLossDays.map(d => d.formattedDate).join(' + ');
+
+  const recentChips = processed.filter(d => d.type === 'loss' || d.type === 'partial' || d.isToday).slice(-5);
+
+  container.innerHTML = `
+    <div class="panel" style="padding:1.25rem;position:relative;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;">
+        <div>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--negative);"></span>
+            <h2 style="font-size:1.1rem;font-weight:600;">Rastreador de Prejuízo Acumulado</h2>
+          </div>
+          <p style="font-size:0.78rem;color:var(--muted);margin-top:0.15rem;">
+            Dias sem venda geram prejuízo que precisa ser coberto nas vendas seguintes.
+          </p>
+        </div>
+        <div style="text-align:right;">
+          <p style="font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);">
+            ${totalUncovered > 0 ? 'Descoberto Hoje' : 'Posição Operação'}
+          </p>
+          <p style="font-size:1.5rem;font-weight:700;font-family:'Space Grotesk',sans-serif;color:${totalUncovered > 0 ? 'var(--negative)' : 'var(--positive)'}">
+            ${totalUncovered > 0 ? '− ' + brl(totalUncovered) : '✓ Coberto'}
+          </p>
+        </div>
+      </div>
+
+      ${recentChips.length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;margin-bottom:1rem;">
+          ${recentChips.map(d => {
+            const isLoss = d.type === 'loss';
+            const isPartial = d.type === 'partial';
+            const totalDebt = d.prevLoss + d.adSpend;
+            const covPct = totalDebt > 0 ? Math.min(100, (d.revenue / totalDebt) * 100) : 100;
+            const bg = isLoss ? 'rgba(240,96,96,0.08)' : isPartial ? 'rgba(240,192,96,0.08)' : 'rgba(94,240,160,0.08)';
+            const border = isLoss ? 'rgba(240,96,96,0.25)' : isPartial ? 'rgba(240,192,96,0.25)' : 'rgba(94,240,160,0.25)';
+            const statusLabel = isLoss ? '⚠ Prejuízo' : isPartial ? '◑ Cobertura Parcial' : '✓ Coberto';
+            return `
+              <div style="background:${bg};border:1px solid ${border};border-radius:0.65rem;padding:0.85rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;font-weight:600;margin-bottom:0.5rem;">
+                  <span>${d.formattedDate} ${d.isToday ? '· HOJE' : ''}</span>
+                  <span style="font-size:0.65rem;padding:0.15rem 0.45rem;border-radius:999px;border:1px solid ${border}">${statusLabel}</span>
+                </div>
+                <div style="font-size:0.75rem;line-height:1.4;">
+                  <div style="display:flex;justify-content:space-between;"><span class="muted">Gasto (anúncios):</span><span class="warning">${brl(d.adSpend)}</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span class="muted">Comissão recebida:</span><span class="${d.revenue>0?'positive':'negative'}">${brl(d.revenue)}</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span class="muted">Dívida anterior:</span><span class="negative">${d.prevLoss > 0 ? brl(d.prevLoss) : '—'}</span></div>
+                  <div style="display:flex;justify-content:space-between;font-weight:600;margin-top:0.25rem;padding-top:0.25rem;border-top:1px dashed var(--border);"><span class="muted">Posição após dia:</span><span class="${d.postLoss>0?'negative':'positive'}">${d.postLoss > 0 ? '− ' + brl(d.postLoss) : '✓ Zero'}</span></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:0.75rem;padding:0.9rem;margin-bottom:1rem;">
+        <p style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.75rem;">📊 Rastreamento Detalhado (Matemática Exata)</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;">
+          <div style="background:rgba(240,96,96,0.08);border:1px solid rgba(240,96,96,0.25);border-radius:0.65rem;padding:0.75rem;">
+            <div style="font-size:1rem;">🔴</div>
+            <p style="font-size:0.75rem;font-weight:700;margin-top:0.25rem;">Prejuízo dos dias sem venda</p>
+            <p style="font-size:0.65rem;color:var(--muted);margin-top:0.1rem;">${lossDayLabels ? 'Dias: ' + lossDayLabels : 'Dias sem venda'}</p>
+            <p style="font-size:1.15rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:var(--negative);margin-top:0.4rem;">− ${brl(totalPrevLoss)}</p>
+          </div>
+
+          <div style="background:rgba(94,240,160,0.06);border:1px solid rgba(94,240,160,0.2);border-radius:0.65rem;padding:0.75rem;">
+            <div style="font-size:1rem;">💰</div>
+            <p style="font-size:0.75rem;font-weight:700;margin-top:0.25rem;">Comissão de hoje</p>
+            <p style="font-size:0.65rem;color:var(--muted);margin-top:0.1rem;">${todayMetrics.units} venda(s) → ${brl(todayRevenue)}</p>
+            <p style="font-size:1.15rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:var(--positive);margin-top:0.4rem;">+ ${brl(todayRevenue)}</p>
+          </div>
+
+          <div style="background:rgba(240,192,96,0.08);border:1px solid rgba(240,192,96,0.25);border-radius:0.65rem;padding:0.75rem;">
+            <div style="font-size:1rem;">📉</div>
+            <p style="font-size:0.75rem;font-weight:700;margin-top:0.25rem;">Restante dos dias anteriores</p>
+            <p style="font-size:0.65rem;color:var(--muted);margin-top:0.1rem;">${remainingPastLoss > 0 ? brl(totalPrevLoss) + ' − ' + brl(todayRevenue) + ' = faltam ' + brl(remainingPastLoss) : 'Passado zerado!'}</p>
+            <p style="font-size:1.15rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:${remainingPastLoss > 0 ? 'var(--warning)' : 'var(--positive)'};margin-top:0.4rem;">${remainingPastLoss > 0 ? '− ' + brl(remainingPastLoss) : '✓ Zero'}</p>
+          </div>
+
+          <div style="background:rgba(240,96,96,0.12);border:1px solid rgba(240,96,96,0.3);border-radius:0.65rem;padding:0.75rem;">
+            <div style="font-size:1rem;">⚠️</div>
+            <p style="font-size:0.75rem;font-weight:700;margin-top:0.25rem;">Posição total descoberta hoje</p>
+            <p style="font-size:0.65rem;color:var(--muted);margin-top:0.1rem;">${remainingPastLoss > 0 ? 'Faltam ' + brl(remainingPastLoss) + ' + ' + brl(todayAdSpend) + ' hoje' : 'Gasto hoje: ' + brl(todayAdSpend)}</p>
+            <p style="font-size:1.15rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:${totalUncovered > 0 ? 'var(--negative)' : 'var(--positive)'};margin-top:0.4rem;">${totalUncovered > 0 ? '− ' + brl(totalUncovered) : '✓ Zero'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:0.85rem 1rem;border-radius:0.75rem;background:${totalUncovered === 0 ? 'rgba(94,240,160,0.08)' : remainingPastLoss > 0 ? 'rgba(240,96,96,0.08)' : 'rgba(240,192,96,0.08)'};border:1px solid ${totalUncovered === 0 ? 'rgba(94,240,160,0.25)' : remainingPastLoss > 0 ? 'rgba(240,96,96,0.25)' : 'rgba(240,192,96,0.25)'}">
+        <h4 style="font-size:0.875rem;font-weight:700;">
+          ${totalUncovered === 0 ? '✅ Prejuízo e gastos totalmente cobertos!' : remainingPastLoss > 0 ? '🔴 Nem os dias anteriores foram 100% cobertos! Faltam centavos do passado + gasto de hoje.' : '⚠️ Prejuízo anterior coberto, mas o gasto de hoje ainda está descoberto.'}
+        </h4>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.35rem;line-height:1.4;">
+          ${totalUncovered === 0 ? 'A comissão de hoje cobriu os prejuízos dos dias anteriores e o investimento em anúncios de hoje.' : remainingPastLoss > 0 ? `• Prejuízo acumulado dos dias sem venda: <strong>${brl(totalPrevLoss)}</strong><br/>• Comissão de hoje: <strong>${brl(todayRevenue)}</strong> → Abateu ${brl(coveredPastLoss)}, mas <span class="negative" style="font-weight:700">faltaram ${brl(remainingPastLoss)}</span> para quitar o passado!<br/>• Gasto de anúncios hoje: <strong>${brl(todayAdSpend)}</strong><br/>• <strong>TOTAL NECESSÁRIO PARA ZERAR TUDO: <span class="negative" style="font-weight:800">${brl(totalUncovered)}</span></strong>` : `A comissão de hoje zerou a dívida dos dias passados (${lossDayLabels}). Porém, faltam <strong class="warning">− ${brl(totalUncovered)}</strong> para cobrir o gasto de hoje (${brl(todayAdSpend)}).`}
+        </p>
+      </div>
+    </div>
+  `;
+}
+
 function renderAll() {
   const month = document.getElementById('monthFilter').value;
   const filtered = entries.filter(e=>month==='all'||monthKey(e.date)===month).sort((a,b)=>b.date.localeCompare(a.date));
@@ -821,6 +979,7 @@ function renderAll() {
   const costs = costBreakdown(filtered);
   renderMonthFilter();
   renderStatsGrid(totals, costs);
+  renderLossTracker(filtered);
   renderTable(filtered);
   renderCostBreakdown(totals, costs);
   renderSalesGrid();

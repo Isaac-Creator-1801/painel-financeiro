@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EntriesTable } from "@/components/finance/EntriesTable";
 import { EntryForm } from "@/components/finance/EntryForm";
+import { LossTracker } from "@/components/finance/LossTracker";
 import { SupabaseModal } from "@/components/finance/SupabaseModal";
 import { TicketSettings } from "@/components/finance/TicketSettings";
 import { StatCard } from "@/components/finance/ui";
@@ -274,6 +275,10 @@ function Dashboard() {
           hint={`${totals.units} pedidos · CPA ${totals.cpa ? brl(totals.cpa) : "—"}`}
           tone="accent"
         />
+      </div>
+
+      <div className="mt-6">
+        <LossTracker entries={filtered} tickets={tickets} />
       </div>
 
       {showSettings ? (

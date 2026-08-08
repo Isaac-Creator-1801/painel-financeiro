@@ -291,3 +291,132 @@ export function toCsv(entries: DayEntry[], tickets: Ticket[]) {
   });
   return [head, ...rows].map((r) => r.join(";")).join("\n");
 }
+
+export type DayLossDetail = {
+  date: string;
+  formattedDate: string;
+  adSpend: number;
+  revenue: number;
+  profit: number;
+  prevLoss: number;
+  postLoss: number;
+  coveredLoss: number;
+  isToday: boolean;
+  type: "loss" | "partial" | "covered" | "profit";
+};
+
+export type LossTrackerData = {
+  lossDays: DayLossDetail[];
+  totalPrevLoss: number;
+  todayEntry: DayEntry | null;
+  todayRevenue: number;
+  todayAdSpend: number;
+  todayUnits: number;
+  coveredPastLoss: number;
+  remainingPastLoss: number;
+  totalUncovered: number;
+  lossDayLabels: string;
+};
+
+export function calculateLossTracker(
+  entries: DayEntry[],
+  tickets: Ticket[],
+): LossTrackerData {
+  if (!entries.length) {
+    return {
+      lossDays: [],
+      totalPrevLoss: 0,
+      todayEntry: null,
+      todayRevenue: 0,
+      todayAdSpend: 0,
+      todayUnits: 0,
+      coveredPastLoss: 0,
+      remainingPastLoss: 0,
+      totalUncovered: 0,
+      lossDayLabels: "",
+    };
+  }
+
+  // Ordenar cronologicamente (do mais antigo ao mais recente)
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Encontrar ou considerar o último lançamento como "Hoje" (ou entrada com a data de hoje)
+  const todayEntry = sorted.find((e) => e.date === todayStr) ?? sorted[sorted.length - 1];
+
+  let runningDebt = 0;
+  const processedDays: DayLossDetail[] = [];
+
+  for (const entry of sorted) {
+    const isToday = entry.id === todayEntry.id;
+    const m = entryMetrics(entry, tickets);
+    const prevLoss = runningDebt;
+
+    let type: "loss" | "partial" | "covered" | "profit" = "profit";
+    let coveredLoss = 0;
+
+    if (m.profit < 0) {
+      // Dia com prejuízo líquido
+      runningDebt += Math.abs(m.profit);
+      type = "loss";
+    } else if (m.revenue > 0 && prevLoss > 0) {
+      // Dia com vendas tentando cobrir a dívida anterior
+      coveredLoss = Math.min(m.revenue, prevLoss);
+      const remainingPrev = prevLoss - coveredLoss;
+      // Novo acumulado: o que sobrou do passado + qualquer custo de hoje não coberto pela sobra da comissão
+      const extraCommissionAfterPast = Math.max(0, m.revenue - prevLoss);
+      const todayUncoveredCost = Math.max(0, n(entry.adSpend) - extraCommissionAfterPast);
+      runningDebt = remainingPrev + todayUncoveredCost;
+
+      type = runningDebt === 0 ? "covered" : "partial";
+    } else if (m.revenue > 0) {
+      // Venda sem dívida anterior
+      type = "profit";
+    }
+
+    processedDays.push({
+      date: entry.date,
+      formattedDate: formatDate(entry.date),
+      adSpend: n(entry.adSpend),
+      revenue: m.revenue,
+      profit: m.profit,
+      prevLoss,
+      postLoss: runningDebt,
+      coveredLoss,
+      isToday,
+      type,
+    });
+  }
+
+  // Identificar os dias de prejuízo sem venda antes do dia atual
+  const pastLossDays = processedDays.filter(
+    (d) => !d.isToday && (d.type === "loss" || d.prevLoss > 0),
+  );
+
+  const todayDetail = processedDays.find((d) => d.isToday);
+  const todayMetrics = todayEntry ? entryMetrics(todayEntry, tickets) : { revenue: 0, units: 0, profit: 0, costs: 0, gross: 0, margin: 0, roas: 0, cpa: 0 };
+
+  const totalPrevLoss = todayDetail ? todayDetail.prevLoss : 0;
+  const todayRevenue = todayMetrics.revenue;
+  const todayAdSpend = n(todayEntry?.adSpend ?? 0);
+  const coveredPastLoss = Math.min(todayRevenue, totalPrevLoss);
+  const remainingPastLoss = Math.max(0, totalPrevLoss - coveredPastLoss);
+  const totalUncovered = todayDetail ? todayDetail.postLoss : remainingPastLoss + todayAdSpend;
+
+  const pureLossDays = pastLossDays.filter((d) => d.profit < 0);
+  const lossDayLabels = pureLossDays.map((d) => d.formattedDate).join(" + ");
+
+  return {
+    lossDays: processedDays.filter((d) => d.type === "loss" || d.type === "partial" || d.isToday).slice(-5),
+    totalPrevLoss,
+    todayEntry,
+    todayRevenue,
+    todayAdSpend,
+    todayUnits: todayMetrics.units,
+    coveredPastLoss,
+    remainingPastLoss,
+    totalUncovered,
+    lossDayLabels,
+  };
+}
+
