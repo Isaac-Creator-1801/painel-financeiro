@@ -277,9 +277,6 @@ function Dashboard() {
         />
       </div>
 
-      <div className="mt-6">
-        <LossTracker entries={derived} tickets={tickets} />
-      </div>
 
       {showSettings ? (
         <div className="mt-6">
