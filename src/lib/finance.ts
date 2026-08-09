@@ -386,101 +386,124 @@ export function calculateLossTracker(
   );
   const todayStr = getLocalDateString();
 
-  // Definir dia de referência (hoje ou último lançamento registrado)
-  const todayEntry =
-    sorted.find((e) => normalizeDate(e.date) === todayStr) ?? sorted[sorted.length - 1];
-  const isRealToday = todayEntry ? normalizeDate(todayEntry.date) === todayStr : false;
-  const todayDateFormatted = todayEntry ? formatDate(todayEntry.date) : "";
+  // Encontrar o último dia que possui lançamentos reais (vendas ou anúncios)
+  const lastActiveEntry =
+    [...sorted]
+      .reverse()
+      .find((e) => entryMetrics(e, tickets).units > 0 || n(e.adSpend) > 0) ??
+    sorted[sorted.length - 1];
 
-  // Identificar todas as entradas do histórico
-  const processedDays: DayLossDetail[] = sorted.map((entry) => {
-    const isToday = entry.id === todayEntry.id;
+  const todayEntry =
+    sorted.find((e) => normalizeDate(e.date) === todayStr) ?? lastActiveEntry;
+  const isRealToday = todayEntry ? normalizeDate(todayEntry.date) === todayStr : false;
+
+  // Se hoje for o dia real mas não tiver lançamentos (0 vendas e 0 anúncios), usa o último dia ativo
+  const refEntry =
+    isRealToday &&
+    (entryMetrics(todayEntry, tickets).units > 0 || n(todayEntry.adSpend) > 0)
+      ? todayEntry
+      : lastActiveEntry;
+  const todayDateFormatted = refEntry ? formatDate(refEntry.date) : "";
+
+  let runningDebt = 0;
+  let activeUncoveredLossDates: string[] = [];
+
+  const processedDays: DayLossDetail[] = [];
+  let refPrevLoss = 0;
+  let refCoveredLoss = 0;
+
+  for (const entry of sorted) {
+    const isToday = entry.id === refEntry.id;
     const m = entryMetrics(entry, tickets);
     const adSpend = n(entry.adSpend);
+    const prevLoss = runningDebt;
+    const formattedDate = formatDate(entry.date);
 
     let type: "loss" | "partial" | "covered" | "profit" = "profit";
-    if (m.profit < 0 || (m.units === 0 && adSpend > 0)) {
+    let coveredLoss = 0;
+
+    if (m.units === 0 && adSpend > 0) {
+      // Dia sem venda com gasto de anúncio
+      runningDebt += adSpend;
       type = "loss";
+      if (!activeUncoveredLossDates.includes(formattedDate)) {
+        activeUncoveredLossDates.push(formattedDate);
+      }
+    } else if (m.revenue > 0) {
+      if (prevLoss > 0) {
+        coveredLoss = Math.min(m.revenue, prevLoss);
+        const debtAfterCovering = prevLoss - coveredLoss;
+        const surplusRevenue = m.revenue - coveredLoss;
+        const uncoveredTodayAds = Math.max(0, adSpend - surplusRevenue);
+
+        runningDebt = debtAfterCovering + uncoveredTodayAds;
+
+        if (debtAfterCovering === 0) {
+          activeUncoveredLossDates = [];
+          if (uncoveredTodayAds > 0) {
+            type = "partial";
+          } else {
+            type = "covered";
+          }
+        } else {
+          type = "partial";
+        }
+      } else {
+        if (adSpend > m.revenue) {
+          runningDebt = adSpend - m.revenue;
+          type = "partial";
+        } else {
+          runningDebt = 0;
+          type = "profit";
+        }
+      }
+    } else {
+      // 0 vendas e 0 adSpend
+      type = runningDebt > 0 ? "partial" : "profit";
     }
 
-    return {
+    if (isToday) {
+      refPrevLoss = prevLoss;
+      refCoveredLoss = coveredLoss;
+    }
+
+    processedDays.push({
       date: entry.date,
-      formattedDate: formatDate(entry.date),
+      formattedDate,
       adSpend,
       revenue: m.revenue,
       profit: m.profit,
-      prevLoss: 0,
-      postLoss: 0,
-      coveredLoss: 0,
+      prevLoss,
+      postLoss: runningDebt,
+      coveredLoss,
       isToday,
       type,
-    };
-  });
+    });
+  }
 
-  // Dias de prejuízo / sem venda anteriores ao dia de referência
-  const pastLossDays = processedDays.filter(
-    (d) => !d.isToday && (d.profit < 0 || (d.revenue === 0 && d.adSpend > 0)),
-  );
-
-  // Soma dos prejuízos dos dias sem venda anteriores (ex: 03/08 R$ 111,51 + 07/08 R$ 69,07 = R$ 180,58)
-  const totalPrevLoss = pastLossDays.reduce(
-    (sum, d) => sum + Math.abs(d.profit < 0 ? d.profit : -d.adSpend),
-    0,
-  );
-
-  const lossDayLabels = pastLossDays.map((d) => d.formattedDate).join(" + ");
-
-  // Métricas do dia de referência (hoje ou último dia lançado)
-  const refMetrics = todayEntry
-    ? entryMetrics(todayEntry, tickets)
+  const refMetrics = refEntry
+    ? entryMetrics(refEntry, tickets)
     : { revenue: 0, units: 0, profit: 0, costs: 0, gross: 0, margin: 0, roas: 0, cpa: 0 };
 
+  const totalPrevLoss = refPrevLoss;
   const todayRevenue = refMetrics.revenue;
-  const todayAdSpend = n(todayEntry?.adSpend ?? 0);
+  const todayAdSpend = n(refEntry?.adSpend ?? 0);
   const todayUnits = refMetrics.units;
 
-  // 1. Quanto da comissão de hoje foi para abater a dívida dos dias sem venda passados
   const coveredPastLoss = Math.min(todayRevenue, totalPrevLoss);
-  // 2. Quanto sobrou da dívida anterior não quitada
   const remainingPastLoss = Math.max(0, totalPrevLoss - coveredPastLoss);
-
-  // 3. Sobra de comissão após quitar o passado
   const extraRevenueAfterPast = Math.max(0, todayRevenue - totalPrevLoss);
-  // 4. Gasto de anúncios do dia que ainda não foi coberto pela comissão
   const todayUncoveredAdSpend = Math.max(0, todayAdSpend - extraRevenueAfterPast);
+  const totalUncovered = runningDebt;
 
-  // 5. Total geral ainda não coberto na operação (passado pendente + gasto de hoje descoberto)
-  const totalUncovered = remainingPastLoss + todayUncoveredAdSpend;
-
-  // Atualizar postLoss e prevLoss nos chips da timeline para exibição visual
-  const lossDaysWithDebt = processedDays.map((d) => {
-    if (d.isToday) {
-      return {
-        ...d,
-        prevLoss: totalPrevLoss,
-        postLoss: totalUncovered,
-        coveredLoss: coveredPastLoss,
-        type:
-          totalUncovered === 0
-            ? ("covered" as const)
-            : remainingPastLoss === 0
-            ? ("partial" as const)
-            : ("loss" as const),
-      };
-    }
-    return {
-      ...d,
-      prevLoss: d.type === "loss" ? d.adSpend : 0,
-      postLoss: d.type === "loss" ? d.adSpend : 0,
-    };
-  });
+  const lossDayLabels = activeUncoveredLossDates.join(" + ");
 
   return {
-    lossDays: lossDaysWithDebt.filter((d) => d.type === "loss" || d.type === "partial" || d.isToday).slice(-5),
+    lossDays: processedDays.filter((d) => d.type === "loss" || d.type === "partial" || d.isToday).slice(-5),
     totalPrevLoss,
-    todayEntry,
+    todayEntry: refEntry,
     todayDateFormatted,
-    isRealToday,
+    isRealToday: refEntry?.id === todayEntry?.id && isRealToday,
     todayRevenue,
     todayAdSpend,
     todayUnits,
