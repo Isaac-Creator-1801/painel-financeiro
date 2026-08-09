@@ -361,14 +361,15 @@ export type LossTrackerData = {
 /**
  * Rastreador de prejuízo acumulado.
  *
- * ALGORITMO (cascata cronológica):
- * 1. Ordena todos os dias do mais antigo ao mais recente.
- * 2. Mantém `runningDebt` que acumula dívida e é abatido pelas comissões.
- * 3. Dia sem venda com adSpend > 0  → adiciona adSpend à dívida.
- * 4. Dia com receita                → usa receita para quitar dívida primeiro,
- *    sobra vai abater adSpend do próprio dia.
- * 5. O "dia de referência" é sempre o ÚLTIMO lançamento com dados reais.
- *    (Funciona se você lançar "hoje" ou "ontem" — tanto faz.)
+ * REGRA DE NEGÓCIO:
+ * - Todos os dias onde revenue=0 E adSpend>0 são "dias de prejuízo".
+ * - A soma dos adSpend desses dias = totalPrevLoss (dívida acumulada dos dias sem venda).
+ * - A comissão do último dia com dados reais paga primeiro essa dívida.
+ * - O que sobrar de comissão cobre os anúncios do próprio dia.
+ * - O que restar descoberto = totalUncovered.
+ *
+ * Isso funciona independente de quando você lança (hoje ou ontem).
+ * O "dia de referência" é sempre o último lançamento com dados reais.
  */
 export function calculateLossTracker(
   entries: DayEntry[],
@@ -392,14 +393,13 @@ export function calculateLossTracker(
 
   if (!entries.length) return empty;
 
-  // ── 1. Ordenar cronologicamente (mais antigo → mais recente) ─────────────
+  // ── 1. Ordenar cronologicamente ──────────────────────────────────────────
   const sorted = [...entries].sort((a, b) =>
     normalizeDate(a.date).localeCompare(normalizeDate(b.date)),
   );
 
-  // ── 2. O dia de referência = ÚLTIMO DIA COM DADOS REAIS ─────────────────
-  // "Dados reais" = ao menos uma venda OU algum adSpend registrado.
-  // Isso garante que um dia em branco de "hoje" não atrapalhe.
+  // ── 2. Dia de referência = ÚLTIMO dia com dados reais ────────────────────
+  // (vendas > 0 OU adSpend > 0 — funciona se você lançar hoje ou ontem)
   const refEntry =
     [...sorted]
       .reverse()
@@ -412,90 +412,93 @@ export function calculateLossTracker(
   const isRealToday = normalizeDate(refEntry.date) === todayStr;
   const todayDateFormatted = formatDate(refEntry.date);
 
-  // ── 3. Cascata cronológica de dívidas ────────────────────────────────────
-  let runningDebt = 0;
-  const uncoveredLossDates: string[] = []; // rótulos dos dias que geraram dívida ainda pendente
-
-  const processedDays: DayLossDetail[] = sorted.map((entry) => {
-    const isRef = entry.id === refEntry.id;
-    const m = entryMetrics(entry, tickets);
-    const adSpend = n(entry.adSpend);
-    const prevDebt = runningDebt;          // dívida acumulada ANTES deste dia
-    const formattedDate = formatDate(entry.date);
-
-    let coveredLoss = 0;
-    let type: DayLossDetail["type"] = "profit";
-
-    if (m.units === 0 && adSpend > 0) {
-      // — Dia sem venda: acumula dívida
-      runningDebt += adSpend;
-      type = "loss";
-      uncoveredLossDates.push(formattedDate);
-
-    } else if (m.revenue > 0) {
-      // — Dia com receita: abate dívida em cascata
-      const payOffDebt = Math.min(m.revenue, prevDebt);   // quanto da receita vai para dívidas passadas
-      coveredLoss = payOffDebt;
-      const leftoverRevenue = m.revenue - payOffDebt;     // sobra após quitar dívidas antigas
-      const debtRemaining = prevDebt - payOffDebt;        // quanto ainda falta das dívidas antigas
-      const uncoveredAds = Math.max(0, adSpend - leftoverRevenue); // anúncios do dia não cobertos pela sobra
-
-      runningDebt = debtRemaining + uncoveredAds;
-
-      if (debtRemaining === 0) {
-        // Quitou todas as dívidas antigas → remove os rótulos
-        uncoveredLossDates.length = 0;
-        type = uncoveredAds > 0 ? "partial" : "covered";
-      } else {
-        type = "partial"; // Só pagou parte da dívida antiga
-      }
-
-    } else {
-      // — Dia sem venda e sem adSpend: não muda a dívida
-      type = runningDebt > 0 ? "partial" : "profit";
-    }
-
-    return {
-      date: entry.date,
-      formattedDate,
-      adSpend,
-      revenue: m.revenue,
-      profit: m.profit,
-      prevLoss: prevDebt,
-      postLoss: runningDebt,
-      coveredLoss,
-      isToday: isRef,
-      type,
-    };
+  // ── 3. Dias de prejuízo = todos os dias SEM VENDA com adSpend > 0 ────────
+  //       (excluindo o dia de referência)
+  const pastLossDays = sorted.filter((e) => {
+    if (e.id === refEntry.id) return false;
+    const m = entryMetrics(e, tickets);
+    return m.units === 0 && n(e.adSpend) > 0;
   });
 
-  // ── 4. Extrair métricas do dia de referência ─────────────────────────────
-  const refDay = processedDays.find((d) => d.isToday)!;
+  // Soma total da dívida dos dias sem venda
+  const totalPrevLoss = pastLossDays.reduce((sum, e) => sum + n(e.adSpend), 0);
+  const lossDayLabels = pastLossDays.map((e) => formatDate(e.date)).join(" + ");
+
+  // ── 4. Métricas do dia de referência ────────────────────────────────────
   const refMetrics = entryMetrics(refEntry, tickets);
+  const todayRevenue = refMetrics.revenue;
+  const todayAdSpend = n(refEntry.adSpend);
+  const todayUnits = refMetrics.units;
 
-  const totalPrevLoss   = refDay.prevLoss;            // dívida que entrou neste dia
-  const todayRevenue    = refMetrics.revenue;
-  const todayAdSpend    = n(refEntry.adSpend);
-  const todayUnits      = refMetrics.units;
+  // ── 5. Cálculo em cascata do dia de referência ───────────────────────────
+  // 5a. Comissão paga primeiro a dívida dos dias sem venda
+  const coveredPastLoss = Math.min(todayRevenue, totalPrevLoss);
+  const remainingPastLoss = Math.max(0, totalPrevLoss - coveredPastLoss);
 
-  const coveredPastLoss     = Math.min(todayRevenue, totalPrevLoss);
-  const remainingPastLoss   = Math.max(0, totalPrevLoss - coveredPastLoss);
-  const leftoverRevenue     = Math.max(0, todayRevenue - totalPrevLoss);
-  const todayUncoveredAdSpend = Math.max(0, todayAdSpend - leftoverRevenue);
+  // 5b. Sobra de comissão (após quitar o passado) vai para os anúncios do dia
+  const surplusRevenue = Math.max(0, todayRevenue - totalPrevLoss);
+  const todayUncoveredAdSpend = Math.max(0, todayAdSpend - surplusRevenue);
 
-  // totalUncovered = dívida após processar TODOS os dias (cascata completa)
-  const totalUncovered = refDay.postLoss;
+  // 5c. Total ainda descoberto na operação
+  const totalUncovered = remainingPastLoss + todayUncoveredAdSpend;
 
-  // Rótulos: apenas datas que ainda estão na lista de dívidas não quitadas
-  const lossDayLabels = uncoveredLossDates.join(" + ");
+  // ── 6. Montar chips para exibição ────────────────────────────────────────
+  // Cada chip de dia de prejuízo mostra o adSpend daquele dia.
+  // O chip do dia de referência mostra a posição após aplicar a cascata.
+  let runningPastDebt = 0;
+  const allChips: DayLossDetail[] = sorted
+    .filter((e) => {
+      if (e.id === refEntry.id) return true;
+      const m = entryMetrics(e, tickets);
+      return m.units === 0 && n(e.adSpend) > 0;
+    })
+    .map((e) => {
+      const isRef = e.id === refEntry.id;
+      const m = entryMetrics(e, tickets);
+      const adSpend = n(e.adSpend);
+      const formattedDate = formatDate(e.date);
 
-  // ── 5. Montar resultado ───────────────────────────────────────────────────
-  const visibleDays = processedDays
-    .filter((d) => d.type === "loss" || d.type === "partial" || d.isToday)
-    .slice(-5);
+      if (isRef) {
+        const type: DayLossDetail["type"] =
+          totalUncovered === 0
+            ? "covered"
+            : remainingPastLoss === 0
+            ? "partial"
+            : "loss";
+        return {
+          date: e.date,
+          formattedDate,
+          adSpend,
+          revenue: m.revenue,
+          profit: m.profit,
+          prevLoss: totalPrevLoss,
+          postLoss: totalUncovered,
+          coveredLoss: coveredPastLoss,
+          isToday: true,
+          type,
+        };
+      }
+
+      const prevDebt = runningPastDebt;
+      runningPastDebt += adSpend;
+      return {
+        date: e.date,
+        formattedDate,
+        adSpend,
+        revenue: m.revenue,
+        profit: m.profit,
+        prevLoss: prevDebt,
+        postLoss: runningPastDebt,
+        coveredLoss: 0,
+        isToday: false,
+        type: "loss" as const,
+      };
+    });
+
+  const visibleChips = allChips.slice(-5);
 
   return {
-    lossDays: visibleDays,
+    lossDays: visibleChips,
     totalPrevLoss,
     todayEntry: refEntry,
     todayDateFormatted,
@@ -510,4 +513,5 @@ export function calculateLossTracker(
     lossDayLabels,
   };
 }
+
 
