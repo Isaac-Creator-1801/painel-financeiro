@@ -68,6 +68,25 @@ export function saveEntries(entries: DayEntry[]) {
   window.localStorage.setItem(KEY_ENTRIES, JSON.stringify(entries));
 }
 
+export function normalizeDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const clean = dateStr.trim();
+  if (clean.includes("-")) {
+    return clean.slice(0, 10);
+  }
+  if (clean.includes("/")) {
+    const parts = clean.split("/");
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, "0");
+      const month = parts[1].padStart(2, "0");
+      let year = parts[2];
+      if (year.length === 2) year = `20${year}`;
+      return `${year}-${month}-${day}`;
+    }
+  }
+  return clean;
+}
+
 export function getLocalDateString(dateObj = new Date()): string {
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, "0");
@@ -101,7 +120,9 @@ export function dailyAdSpend(entries: DayEntry[]): DayEntry[] {
   }
   const out: DayEntry[] = [];
   for (const list of byMonth.values()) {
-    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date));
+    const sorted = [...list].sort((a, b) =>
+      normalizeDate(a.date).localeCompare(normalizeDate(b.date)),
+    );
     let prev = 0;
     for (const e of sorted) {
       const invoice = n(e.adSpend);
@@ -114,9 +135,15 @@ export function dailyAdSpend(entries: DayEntry[]): DayEntry[] {
 
 /** Fatura acumulada registrada antes de `date` (mesmo mês), ignorando `ignoreId`. */
 export function previousInvoice(entries: DayEntry[], date: string, ignoreId?: string): number {
-  const month = monthKey(date);
+  const targetNorm = normalizeDate(date);
+  const targetMonth = monthKey(date);
   return entries
-    .filter((e) => e.id !== ignoreId && monthKey(e.date) === month && e.date < date)
+    .filter(
+      (e) =>
+        e.id !== ignoreId &&
+        monthKey(e.date) === targetMonth &&
+        normalizeDate(e.date) < targetNorm,
+    )
     .reduce((max, e) => Math.max(max, n(e.adSpend)), 0);
 }
 
@@ -217,7 +244,9 @@ export const pct = (v: number) =>
   `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 export function formatDate(date: string) {
-  const [y, m, d] = date.split("-");
+  const norm = normalizeDate(date);
+  if (!norm || !norm.includes("-")) return date;
+  const [y, m, d] = norm.split("-");
   return `${d}/${m}/${y.slice(-2)}`;
 }
 
@@ -242,7 +271,8 @@ export function parseDisplayDate(value: string): string | null {
 }
 
 export function monthKey(date: string) {
-  return date.slice(0, 7);
+  const norm = normalizeDate(date);
+  return norm.slice(0, 7);
 }
 
 export function monthLabel(key: string) {
@@ -350,13 +380,16 @@ export function calculateLossTracker(
     };
   }
 
-  // Ordenar cronologicamente (do mais antigo ao mais recente)
-  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  // Ordenar cronologicamente por data ISO normalizada (do mais antigo ao mais recente)
+  const sorted = [...entries].sort((a, b) =>
+    normalizeDate(a.date).localeCompare(normalizeDate(b.date)),
+  );
   const todayStr = getLocalDateString();
 
   // Definir dia de referência (hoje ou último lançamento registrado)
-  const todayEntry = sorted.find((e) => e.date === todayStr) ?? sorted[sorted.length - 1];
-  const isRealToday = todayEntry?.date === todayStr;
+  const todayEntry =
+    sorted.find((e) => normalizeDate(e.date) === todayStr) ?? sorted[sorted.length - 1];
+  const isRealToday = todayEntry ? normalizeDate(todayEntry.date) === todayStr : false;
   const todayDateFormatted = todayEntry ? formatDate(todayEntry.date) : "";
 
   // Identificar todas as entradas do histórico
