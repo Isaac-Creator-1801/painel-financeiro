@@ -278,7 +278,7 @@ function Dashboard() {
       </div>
 
       <div className="mt-6">
-        <LossTracker entries={filtered} tickets={tickets} />
+        <LossTracker entries={derived} tickets={tickets} />
       </div>
 
       {showSettings ? (
