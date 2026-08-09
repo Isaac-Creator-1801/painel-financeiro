@@ -16,11 +16,14 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
   const {
     lossDays,
     totalPrevLoss,
+    todayDateFormatted,
+    isRealToday,
     todayRevenue,
     todayAdSpend,
     todayUnits,
     coveredPastLoss,
     remainingPastLoss,
+    todayUncoveredAdSpend,
     totalUncovered,
     lossDayLabels,
   } = data;
@@ -50,13 +53,13 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
             </h2>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Dias sem venda geram prejuízo que precisa ser coberto nas vendas seguintes. Veja o status em tempo real.
+            Dias sem venda geram prejuízo que precisa ser coberto nas vendas seguintes. Veja o status em tempo real {isRealToday ? "do dia de hoje" : `baseado no lançamento de ${todayDateFormatted}`}.
           </p>
         </div>
 
         <div className="text-right">
           <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">
-            {totalUncovered > 0 ? "Descoberto Hoje" : "Posição Operação"}
+            {totalUncovered > 0 ? (isRealToday ? "Descoberto Hoje" : `Descoberto (${todayDateFormatted})`) : "Posição Operação"}
           </p>
           <p
             className={`font-display text-2xl font-bold tabular-nums ${
@@ -74,7 +77,6 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
           {lossDays.map((d) => {
             const isLoss = d.type === "loss";
             const isPartial = d.type === "partial";
-            const isCovered = d.type === "covered";
 
             const totalDebt = d.prevLoss + d.adSpend;
             const coveragePct =
@@ -93,7 +95,7 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-foreground">
-                    {d.formattedDate} {d.isToday ? "· HOJE" : ""}
+                    {d.formattedDate} {d.isToday ? (isRealToday ? "· HOJE" : "· ÚLTIMO DIA") : ""}
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider ${
@@ -184,21 +186,21 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
           <div className="relative rounded-lg border border-negative/30 bg-negative/10 p-3.5">
             <div className="text-lg">🔴</div>
             <p className="mt-1 text-xs font-bold text-foreground">
-              Prejuízo dos dias sem venda
+              Dívida acumulada anterior
             </p>
             <p className="text-[0.68rem] text-muted-foreground mt-0.5">
-              {lossDayLabels ? `Dias: ${lossDayLabels}` : "Dias anteriores sem venda"}
+              {lossDayLabels ? `Dias: ${lossDayLabels}` : "Sem dívida anterior trazida"}
             </p>
             <p className="mt-2 font-display text-lg font-bold text-negative tabular-nums">
-              − {brl(totalPrevLoss)}
+              {totalPrevLoss > 0 ? `− ${brl(totalPrevLoss)}` : "✓ R$ 0,00"}
             </p>
           </div>
 
-          {/* Passo 2: Comissão de hoje */}
+          {/* Passo 2: Comissão do dia */}
           <div className="relative rounded-lg border border-positive/30 bg-positive/10 p-3.5">
             <div className="text-lg">💰</div>
             <p className="mt-1 text-xs font-bold text-foreground">
-              Comissão de hoje
+              Comissão ({isRealToday ? "hoje" : todayDateFormatted})
             </p>
             <p className="text-[0.68rem] text-muted-foreground mt-0.5">
               {todayUnits} venda{todayUnits !== 1 ? "s" : ""} → {brl(todayRevenue)} em comissão
@@ -215,9 +217,11 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
               Restante dos dias anteriores
             </p>
             <p className="text-[0.68rem] text-muted-foreground mt-0.5">
-              {remainingPastLoss > 0
+              {totalPrevLoss === 0
+                ? "Dívidas passadas zeradas!"
+                : remainingPastLoss > 0
                 ? `${brl(totalPrevLoss)} − ${brl(todayRevenue)} = faltam ${brl(remainingPastLoss)}`
-                : "Dívidas passadas zeradas!"}
+                : `Comissão quitou o passado! (${brl(totalPrevLoss)})`}
             </p>
             <p
               className={`mt-2 font-display text-lg font-bold tabular-nums ${
@@ -232,13 +236,13 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
           <div className="relative rounded-lg border border-negative/40 bg-negative/15 p-3.5">
             <div className="text-lg">⚠️</div>
             <p className="mt-1 text-xs font-bold text-foreground">
-              Posição total descoberta hoje
+              Posição total descoberta ({isRealToday ? "hoje" : todayDateFormatted})
             </p>
             <p className="text-[0.68rem] text-muted-foreground mt-0.5">
               {remainingPastLoss > 0
-                ? `Faltam ${brl(remainingPastLoss)} do passado + ${brl(todayAdSpend)} de hoje`
+                ? `Faltam ${brl(remainingPastLoss)} do passado + ${brl(todayUncoveredAdSpend)} de anúncios`
                 : totalUncovered > 0
-                ? `Gasto de hoje (${brl(todayAdSpend)}) não coberto`
+                ? `Anúncios do dia (${brl(todayAdSpend)}) ainda não cobertos`
                 : "Tudo 100% coberto!"}
             </p>
             <p
@@ -262,7 +266,7 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
                 Prejuízo e gastos totalmente cobertos!
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                A comissão de hoje cobriu os prejuízos dos dias anteriores e o investimento em anúncios de hoje. Sua operação está no positivo!
+                A comissão do dia ({todayDateFormatted}) cobriu os prejuízos dos dias anteriores e o investimento em anúncios. Sua operação está no positivo!
               </p>
             </div>
           </div>
@@ -271,12 +275,12 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
             <span className="text-2xl">🔴</span>
             <div>
               <h4 className="text-sm font-bold text-foreground">
-                Nem os dias anteriores foram 100% cobertos! Faltam centavos do passado + gasto de hoje.
+                Os dias anteriores ainda não foram 100% cobertos!
               </h4>
               <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                <p>• Prejuízo acumulado dos dias sem venda ({lossDayLabels || "anteriores"}): <strong>{brl(totalPrevLoss)}</strong></p>
-                <p>• Comissão de hoje: <strong>{brl(todayRevenue)}</strong> → Abateu {brl(coveredPastLoss)}, mas <span className="text-negative font-semibold">faltaram {brl(remainingPastLoss)}</span> para quitar o passado!</p>
-                <p>• Gasto de anúncios hoje: <strong>{brl(todayAdSpend)}</strong> (ainda não coberto)</p>
+                <p>• Dívida acumulada dos dias anteriores ({lossDayLabels || "sem venda"}): <strong>{brl(totalPrevLoss)}</strong></p>
+                <p>• Comissão do dia ({todayDateFormatted}): <strong>{brl(todayRevenue)}</strong> → Abateu {brl(coveredPastLoss)}, mas <span className="text-negative font-semibold">faltaram {brl(remainingPastLoss)}</span> para quitar o passado!</p>
+                <p>• Gasto de anúncios ({todayDateFormatted}): <strong>{brl(todayAdSpend)}</strong> (ainda não coberto)</p>
                 <p className="text-foreground font-semibold pt-0.5">• <strong>TOTAL NECESSÁRIO PARA ZERAR TUDO: <span className="text-negative font-bold">{brl(totalUncovered)}</span></strong></p>
               </div>
             </div>
@@ -286,11 +290,20 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
             <span className="text-2xl">⚠️</span>
             <div>
               <h4 className="text-sm font-bold text-foreground">
-                Prejuízo anterior coberto, mas o gasto de hoje ainda está descoberto.
+                Prejuízo anterior coberto! Faltam apenas {brl(totalUncovered)} para cobrir anúncios.
               </h4>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                A comissão de hoje zerou a dívida dos dias passados ({lossDayLabels}). Porém, faltam <strong className="text-warning">− {brl(totalUncovered)}</strong> para cobrir o gasto com anúncios de hoje ({brl(todayAdSpend)}). A próxima venda resolve isso!
-              </p>
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                {totalPrevLoss > 0 ? (
+                  <>
+                    <p>• Dívida acumulada anterior ({lossDayLabels || "sem venda"}): <strong>{brl(totalPrevLoss)}</strong> → <span className="text-positive font-semibold">100% quitada com a comissão do dia ({brl(todayRevenue)})!</span></p>
+                    <p>• Sobra da comissão após quitar o passado: <strong>{brl(todayRevenue - totalPrevLoss)}</strong></p>
+                    <p>• Gasto de anúncios do dia ({todayDateFormatted}): <strong>{brl(todayAdSpend)}</strong> → Abateu a sobra da comissão, mas <span className="text-warning font-semibold">faltam {brl(totalUncovered)}</span> para zerar o dia!</p>
+                  </>
+                ) : (
+                  <p>• A comissão do dia ({brl(todayRevenue)}) abateu parte do anúncio ({brl(todayAdSpend)}), mas faltam <strong className="text-warning">− {brl(totalUncovered)}</strong> para zerar o dia.</p>
+                )}
+                <p className="text-foreground font-semibold pt-0.5">• <strong>TOTAL NECESSÁRIO PARA ZERAR TUDO: <span className="text-warning font-bold">{brl(totalUncovered)}</span></strong></p>
+              </div>
             </div>
           </div>
         )}
@@ -298,3 +311,4 @@ export function LossTracker({ entries, tickets }: LossTrackerProps) {
     </section>
   );
 }
+

@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demo — Rastreador de Prejuízo | Controle Financeiro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        oklch(0.17 0.015 250);
+      --surface:   oklch(0.215 0.017 252);
+      --surface2:  oklch(0.255 0.019 252);
+      --border:    oklch(1 0 0 / 10%);
+      --fg:        oklch(0.96 0.005 250);
+      --muted:     oklch(0.7 0.018 252);
+      --primary:   oklch(0.78 0.16 162);   /* verde menta */
+      --accent:    oklch(0.72 0.14 210);   /* azul */
+      --positive:  oklch(0.79 0.16 160);
+      --negative:  oklch(0.68 0.2 22);
+      --warning:   oklch(0.82 0.15 78);
+      --shadow:    0 24px 60px -30px oklch(0 0 0 / 0.85);
+      --radius:    0.75rem;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(1000px 500px at 12% -10%, oklch(0.78 0.16 162 / 0.1), transparent 60%),
+        radial-gradient(800px 400px at 90% 0%, oklch(0.72 0.14 210 / 0.09), transparent 60%);
+      background-attachment: fixed;
+      color: var(--fg);
+      font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: 'Space Grotesk', ui-sans-serif, sans-serif;
+      letter-spacing: -0.02em;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .header-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--primary);
+    }
+    .header h1 {
+      font-size: 2.2rem;
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+    .header-sub {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .badge-demo {
+      background: oklch(0.72 0.14 210 / 0.15);
+      color: oklch(0.72 0.14 210);
+      border: 1px solid oklch(0.72 0.14 210 / 0.35);
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.25rem 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ── STAT CARDS ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 500px) { .stat-grid { grid-template-columns: 1fr; } }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 4px);
+      box-shadow: var(--shadow);
+      padding: 1rem 1.25rem;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'Space Grotesk', sans-serif;
+      margin-top: 0.3rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+    .tone-positive .stat-value { color: var(--positive); }
+    .tone-negative .stat-value { color: var(--negative); }
+    .tone-warning  .stat-value { color: var(--warning); }
+    .tone-accent   .stat-value { color: var(--accent); }
+
+    /* ══════════════════════════════════════════════════════
+       ── NOVO: PAINEL RASTREADOR DE PREJUÍZO ──
+    ══════════════════════════════════════════════════════ */
+    .tracker-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 4px);
+      box-shadow: var(--shadow);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .tracker-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(600px 300px at 80% -20%, oklch(0.68 0.2 22 / 0.07), transparent 60%);
+      pointer-events: none;
+    }
+
+    .tracker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .tracker-title-block {}
+    .tracker-title {
+      font-size: 1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tracker-subtitle { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* ── timeline de dias ── */
+    .days-timeline {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .day-chip {
+      flex: 1;
+      min-width: 140px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+      position: relative;
+    }
+    .day-chip.chip-loss { border-color: oklch(0.68 0.2 22 / 0.4); background: oklch(0.68 0.2 22 / 0.07); }
+    .day-chip.chip-partial { border-color: oklch(0.82 0.15 78 / 0.4); background: oklch(0.82 0.15 78 / 0.07); }
+    .day-chip.chip-profit { border-color: oklch(0.79 0.16 160 / 0.4); background: oklch(0.79 0.16 160 / 0.07); }
+
+    .chip-date {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .chip-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      border-radius: 9999px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.18rem 0.55rem;
+      margin-top: 0.3rem;
+    }
+    .badge-loss    { background: oklch(0.68 0.2 22 / 0.2); color: var(--negative); border: 1px solid oklch(0.68 0.2 22 / 0.3); }
+    .badge-partial { background: oklch(0.82 0.15 78 / 0.2); color: var(--warning); border: 1px solid oklch(0.82 0.15 78 / 0.3); }
+    .badge-covered { background: oklch(0.79 0.16 160 / 0.2); color: var(--positive); border: 1px solid oklch(0.79 0.16 160 / 0.3); }
+
+    .chip-rows { margin-top: 0.6rem; }
+    .chip-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      margin-top: 0.2rem;
+    }
+    .chip-row .lbl { color: var(--muted); }
+    .chip-row .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .val-red  { color: var(--negative); }
+    .val-grn  { color: var(--positive); }
+    .val-yel  { color: var(--warning); }
+    .val-neu  { color: var(--fg); }
+
+    /* progress bar de cobertura */
+    .coverage-bar-wrap { margin-top: 0.65rem; }
+    .coverage-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.68rem; color: var(--muted); margin-bottom: 0.3rem;
+    }
+    .bar-track {
+      height: 5px;
+      background: oklch(1 0 0 / 8%);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.6s cubic-bezier(0.22,1,0.36,1);
+    }
+    .bar-green  { background: var(--positive); }
+    .bar-yellow { background: var(--warning); }
+    .bar-red    { background: var(--negative); }
+
+    /* ── Ledger / narrativa ── */
+    .ledger {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .ledger-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .ledger-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.55rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.84rem;
+    }
+    .ledger-row:last-child { border-bottom: none; }
+    .ledger-icon {
+      font-size: 1rem;
+      width: 1.5rem;
+      text-align: center;
+      flex-shrink: 0;
+      margin-top: 0.05rem;
+    }
+    .ledger-text { flex: 1; color: var(--muted); line-height: 1.45; }
+    .ledger-text strong { color: var(--fg); font-weight: 600; }
+    .ledger-amount {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      white-space: nowrap;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    /* ── Resultado final / semáforo ── */
+    .verdict-box {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius);
+      border: 1px solid;
+    }
+    .verdict-box.verd-negative {
+      background: oklch(0.68 0.2 22 / 0.08);
+      border-color: oklch(0.68 0.2 22 / 0.3);
+    }
+    .verdict-box.verd-partial {
+      background: oklch(0.82 0.15 78 / 0.08);
+      border-color: oklch(0.82 0.15 78 / 0.3);
+    }
+    .verdict-box.verd-positive {
+      background: oklch(0.79 0.16 160 / 0.08);
+      border-color: oklch(0.79 0.16 160 / 0.3);
+    }
+    .verdict-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .verdict-text h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.15rem; }
+    .verdict-text p  { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+    .verdict-text .hl-red { color: var(--negative); font-weight: 700; }
+    .verdict-text .hl-yel { color: var(--warning); font-weight: 700; }
+    .verdict-text .hl-grn { color: var(--positive); font-weight: 700; }
+
+    /* ── TABLE (igual ao site) ── */
+    .table-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 4px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .table-head {
+      padding: 1rem 1.25rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-head h2 { font-size: 1rem; font-weight: 600; }
+    .table-head p  { font-size: 0.78rem; color: var(--muted); margin-top: 0.1rem; }
+
+    .scroll-x { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      padding: 0.65rem 0.9rem;
+      text-align: left;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: oklch(1 0 0 / 3%); }
+    tbody tr.row-highlight-loss { background: oklch(0.68 0.2 22 / 0.05); }
+    tbody tr.row-today { background: oklch(0.79 0.16 160 / 0.04); border-left: 2px solid var(--positive); }
+    td {
+      padding: 0.7rem 0.9rem;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .td-date { font-weight: 600; color: var(--fg); }
+    .td-zero { color: var(--muted); }
+    .td-ret  { color: var(--positive); font-weight: 600; }
+    .td-ret-zero { color: var(--muted); }
+    .td-ads  { color: var(--fg); }
+    .td-cost { color: var(--warning); font-weight: 600; }
+    .td-profit-pos { color: var(--positive); font-weight: 700; }
+    .td-profit-neg { color: var(--negative); font-weight: 700; }
+    .td-roas { color: var(--accent); font-weight: 600; }
+    .td-roas-none { color: var(--muted); }
+    .td-loss-flag {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em;
+      background: oklch(0.68 0.2 22 / 0.18);
+      color: var(--negative);
+      border: 1px solid oklch(0.68 0.2 22 / 0.3);
+      border-radius: 9999px;
+      padding: 0.1rem 0.45rem;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .td-today-flag {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em;
+      background: oklch(0.79 0.16 160 / 0.18);
+      color: var(--positive);
+      border: 1px solid oklch(0.79 0.16 160 / 0.3);
+      border-radius: 9999px;
+      padding: 0.1rem 0.45rem;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .td-loss-acc {
+      font-size: 0.7rem; color: var(--negative);
+      background: oklch(0.68 0.2 22 / 0.12);
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+    }
+
+    /* ── footer note ── */
+    .demo-note {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2rem;
+      padding: 0.75rem;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .demo-note span { color: var(--accent); font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div>
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <p class="header-label">Operação · controle diário</p>
+        <span class="badge-demo">🧪 DEMO</span>
+      </div>
+      <h1>Controle Financeiro</h1>
+      <p class="header-sub">Vendas por ticket, gastos e lucro real — sincronizado no PC e Celular.</p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+      <select style="background:var(--surface2);border:1px solid var(--border);border-radius:0.5rem;padding:0.45rem 0.7rem;color:var(--fg);font-size:0.85rem;outline:none;">
+        <option>Agosto 2026</option>
+      </select>
+      <button style="background:var(--surface2);border:1px solid var(--border);border-radius:0.5rem;padding:0.45rem 0.9rem;color:var(--fg);font-size:0.85rem;cursor:pointer;">Exportar CSV</button>
+      <button style="background:var(--surface2);border:1px solid var(--border);border-radius:0.5rem;padding:0.45rem 0.9rem;color:var(--fg);font-size:0.85rem;cursor:pointer;">⚙️ Database</button>
+      <button style="background:var(--surface2);border:1px solid var(--border);border-radius:0.5rem;padding:0.45rem 0.9rem;color:var(--fg);font-size:0.85rem;cursor:pointer;">Tickets</button>
+    </div>
+  </header>
+
+  <!-- STAT CARDS (período agosto) -->
+  <div class="stat-grid">
+    <div class="stat-card tone-positive">
+      <div class="stat-label">Retorno líquido (comissão)</div>
+      <div class="stat-value" id="sc-retorno">R$ 2.142,00</div>
+      <div class="stat-hint">Faturamento bruto R$ 5.152,00</div>
+    </div>
+    <div class="stat-card tone-warning">
+      <div class="stat-label">Gastos totais</div>
+      <div class="stat-value" id="sc-gastos">R$ 783,99</div>
+      <div class="stat-hint">Anúncios R$ 783,99</div>
+    </div>
+    <div class="stat-card tone-positive">
+      <div class="stat-label">Lucro líquido</div>
+      <div class="stat-value" id="sc-lucro">R$ 1.358,01</div>
+      <div class="stat-hint">Margem 63,4%</div>
+    </div>
+    <div class="stat-card tone-accent">
+      <div class="stat-label">ROAS · vendas</div>
+      <div class="stat-value">2.73x</div>
+      <div class="stat-hint">9 pedidos · CPA R$ 87,11</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       NOVO PAINEL: RASTREADOR DE PREJUÍZO ACUMULADO
+  ══════════════════════════════════════════════════ -->
+  <section class="tracker-panel" id="tracker">
+    <div class="tracker-header">
+      <div class="tracker-title-block">
+        <div class="tracker-title">
+          🔴 Rastreador de Prejuízo Acumulado
+        </div>
+        <div class="tracker-subtitle">
+          Dias sem venda geram prejuízo que precisa ser coberto nas vendas seguintes. Veja o status em tempo real.
+        </div>
+      </div>
+      <div id="tracker-summary-badge"></div>
+    </div>
+
+    <!-- TIMELINE DOS DIAS -->
+    <div class="days-timeline" id="days-timeline">
+      <!-- gerado pelo JS -->
+    </div>
+
+    <!-- RESUMO VISUAL SIMPLES -->
+    <div class="ledger" id="resumo-visual"><!-- gerado pelo JS --></div>
+
+    <!-- VERDICT -->
+    <div id="verdict-box"><!-- gerado pelo JS --></div>
+  </section>
+
+  <!-- TABELA (igual ao site) -->
+  <div class="table-panel">
+    <div class="table-head">
+      <h2>Lançamentos — Agosto 2026</h2>
+      <p>Histórico diário de vendas e gastos com destaque nos dias de prejuízo e cobertura.</p>
+    </div>
+    <div class="scroll-x">
+      <table id="main-table">
+        <thead>
+          <tr>
+            <th>DATA</th>
+            <th>R$ 247</th>
+            <th>R$ 297</th>
+            <th>R$ 347</th>
+            <th>R$ 397</th>
+            <th>R$ 697</th>
+            <th>RETORNO</th>
+            <th>ANÚNCIOS</th>
+            <th>CUSTOS</th>
+            <th>LUCRO</th>
+            <th>ROAS</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"><!-- gerado pelo JS --></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="demo-note">
+    🧪 Esta é uma <span>versão de demonstração</span>. Os dados acima refletem o seu cenário real de agosto/2026.
+    Após sua aprovação, o painel de rastreamento será integrado ao site oficial.
+  </p>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// DADOS (baseados na foto + seu relato de hoje)
+// ─────────────────────────────────────────────
+const TICKETS = [
+  { label: 'R$ 247', commission: 0 },
+  { label: 'R$ 297', commission: 0 },
+  { label: 'R$ 347', commission: 180 },
+  { label: 'R$ 397', commission: 206 },
+  { label: 'R$ 697', commission: 0 },
+];
+
+const DATA = [
+  // { date, sales:[247,297,347,397,697], adSpend, label?, today? }
+  { date: '08/08/26', label: 'Hoje', today: true,
+    sales: [0,0,1,0,0], adSpend: 100.00 },         // hoje: 1 venda R$347 → comissão R$180
+  { date: '07/08/26', sales: [0,0,0,0,0], adSpend:  69.07 },
+  { date: '06/08/26', sales: [0,0,0,1,0], adSpend: 115.00 },
+  { date: '05/08/26', sales: [0,0,0,1,0], adSpend:  94.56 },
+  { date: '04/08/26', sales: [0,0,1,3,0], adSpend:  78.55 },
+  { date: '03/08/26', sales: [0,0,0,0,0], adSpend: 111.51 },
+  { date: '02/08/26', sales: [0,0,1,0,0], adSpend: 170.09 },
+  { date: '01/08/26', sales: [0,0,2,2,0], adSpend: 144.76 },
+];
+
+const commissions = [0, 0, 180, 206, 0]; // por ticket
+
+// ─── calcular métricas por dia ─────────────────
+function calcDay(d) {
+  const revenue = d.sales.reduce((s, qty, i) => s + qty * commissions[i], 0);
+  const profit  = revenue - d.adSpend;
+  const roas    = d.adSpend > 0 ? revenue / d.adSpend : null;
+  const units   = d.sales.reduce((s,q) => s+q, 0);
+  return { ...d, revenue, profit, units, roas };
+}
+
+const days = DATA.map(calcDay);
+
+// ─── identificar sequência de prejuízo ──────────
+// Lógica que rastreia estritamente os dias de prejuízo acumulado do período
+const orderedAsc = [...days].reverse(); // mais antigo primeiro
+
+// Dias de prejuízo sem venda: 03/08 (R$111,51) e 07/08 (R$69,07)
+// Soma do prejuízo acumulado dos dias sem venda: R$ 180,58
+let runningLoss = 0;
+const dayState = orderedAsc.map(d => {
+  if (d.date === '03/08/26') {
+    runningLoss += d.adSpend; // 111.51
+    return { ...d, prevLoss: 0, postLoss: runningLoss, type: 'loss', coveredLoss: 0 };
+  } else if (d.date === '07/08/26') {
+    const prev = runningLoss;
+    runningLoss += d.adSpend; // + 69.07 = 180.58
+    return { ...d, prevLoss: prev, postLoss: runningLoss, type: 'loss', coveredLoss: 0 };
+  } else if (d.today) {
+    const prevDebt = 180.58; // R$111,51 + R$69,07
+    const coveredPast = Math.min(d.revenue, prevDebt); // R$ 180,00 cobriu R$ 180,00 dos R$ 180,58 (faltou R$ 0,58)
+    const remainingPast = prevDebt - coveredPast; // R$ 0,58
+    const totalRemaining = remainingPast + d.adSpend; // R$ 0,58 + R$ 100,00 = R$ 100,58
+    return {
+      ...d,
+      prevLoss: prevDebt,
+      coveredLoss: coveredPast,
+      postLoss: totalRemaining,
+      remainingPast: remainingPast,
+      type: 'partial'
+    };
+  } else {
+    return { ...d, prevLoss: 0, postLoss: 0, type: d.profit >= 0 ? 'profit' : 'loss', coveredLoss: 0 };
+  }
+});
+
+// volta para ordem desc (mais novo primeiro) para exibir
+const dayStateDesc = [...dayState].reverse();
+
+// ─── montar tabela ────────────────────────────
+const brl = v => 'R$ ' + Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const sign = v => v >= 0 ? '+' : '-';
+
+const tbody = document.getElementById('table-body');
+dayStateDesc.forEach(d => {
+  const isLoss = d.type === 'loss';
+  const isToday = d.today;
+  const row = document.createElement('tr');
+  if (isToday) row.classList.add('row-today');
+  else if (isLoss) row.classList.add('row-highlight-loss');
+
+  const dateCell = `<td class="td-date">
+    ${d.date}
+    ${isToday ? '<span class="td-today-flag">● Hoje</span>' : ''}
+    ${isLoss && !isToday ? '<span class="td-loss-flag">⚠ Prejuízo</span>' : ''}
+  </td>`;
+
+  const saleCells = d.sales.map(q =>
+    `<td class="${q === 0 ? 'td-zero' : 'val-grn'}">${q === 0 ? '0' : q}</td>`
+  ).join('');
+
+  const retClass = d.revenue === 0 ? 'td-ret-zero' : 'td-ret';
+  const profClass = d.profit >= 0 ? 'td-profit-pos' : 'td-profit-neg';
+  const roasStr = d.roas ? `${d.roas.toFixed(2)}x` : '—';
+  const roasClass = d.roas ? 'td-roas' : 'td-roas-none';
+
+  const lossAccCell = isLoss
+    ? `<td><span class="td-loss-acc">Acum: ${brl(d.postLoss)}</span></td>`
+    : `<td></td>`;
+
+  row.innerHTML = `
+    ${dateCell}
+    ${saleCells}
+    <td class="${retClass}">${d.revenue === 0 ? 'R$ 0,00' : brl(d.revenue)}</td>
+    <td class="td-ads">${brl(d.adSpend)}</td>
+    <td class="td-cost">${brl(d.adSpend)}</td>
+    <td class="${profClass}">${d.profit >= 0 ? '' : '-'}${brl(d.profit)}</td>
+    <td class="${roasClass}">${roasStr}</td>
+    ${lossAccCell}
+  `;
+  tbody.appendChild(row);
+});
+
+// ─── Rastreador: encontrar dias relevantes ─────
+// dias de prejuízo recentes (sem cobertura completa)
+const lossEvents = dayState.filter(d => d.type === 'loss' || d.type === 'partial');
+const todayState = dayState.find(d => d.today);
+
+// ─── CHIP CARDS ───────────────────────────────
+const timeline = document.getElementById('days-timeline');
+
+// Mostrar: dias de prejuízo + hoje
+const showDays = dayState.filter(d =>
+  d.type === 'loss' || d.type === 'partial' || d.today
+).slice(-5); // até 5 mais recentes
+
+showDays.forEach(d => {
+  const chip = document.createElement('div');
+  const chipClass = d.type === 'loss' ? 'chip-loss' : d.type === 'partial' ? 'chip-partial' : 'chip-profit';
+  chip.className = `day-chip ${chipClass}`;
+
+  let badgeHtml = '';
+  let coveragePct = 0;
+  let coverageColor = 'bar-red';
+
+  if (d.type === 'loss') {
+    badgeHtml = `<span class="chip-status-badge badge-loss">⚠ Prejuízo</span>`;
+    coveragePct = 0;
+  } else if (d.type === 'partial') {
+    badgeHtml = `<span class="chip-status-badge badge-partial">◑ Cobertura parcial</span>`;
+    const totalDebt = d.prevLoss + d.adSpend;
+    coveragePct = Math.min(100, (d.revenue / totalDebt) * 100);
+    coverageColor = 'bar-yellow';
+  } else {
+    badgeHtml = `<span class="chip-status-badge badge-covered">✓ Coberto</span>`;
+    coveragePct = 100;
+    coverageColor = 'bar-green';
+  }
+
+  const totalDebt = d.prevLoss + d.adSpend;
+  const pctLabel = totalDebt > 0 ? Math.round(coveragePct) + '% coberto' : '100%';
+
+  chip.innerHTML = `
+    <div class="chip-date">${d.date}${d.today ? ' · Hoje' : ''}</div>
+    ${badgeHtml}
+    <div class="chip-rows">
+      <div class="chip-row"><span class="lbl">Gasto (anúncios)</span><span class="val val-yel">${brl(d.adSpend)}</span></div>
+      <div class="chip-row"><span class="lbl">Comissão recebida</span><span class="val ${d.revenue>0?'val-grn':'val-red'}">${brl(d.revenue)}</span></div>
+      <div class="chip-row"><span class="lbl">Dívida anterior</span><span class="val val-red">${d.prevLoss > 0 ? brl(d.prevLoss) : '—'}</span></div>
+      <div class="chip-row"><span class="lbl">Posição após dia</span><span class="val ${d.postLoss > 0 ? 'val-red':'val-grn'}">${d.postLoss > 0 ? '-' + brl(d.postLoss) : '✓ Zero'}</span></div>
+    </div>
+    ${totalDebt > 0 ? `
+    <div class="coverage-bar-wrap">
+      <div class="coverage-label"><span>Cobertura</span><span>${pctLabel}</span></div>
+      <div class="bar-track"><div class="bar-fill ${coverageColor}" style="width:${coveragePct}%"></div></div>
+    </div>` : ''}
+  `;
+  timeline.appendChild(chip);
+});
+
+// ─── RESUMO VISUAL EXATO DE 4 PASSOS ─────────────────
+const resumo = document.getElementById('resumo-visual');
+
+const loss03 = 111.51;
+const loss07 = 69.07;
+const totalPrevLoss = loss03 + loss07; // R$ 180.58
+const comissaHoje = 180.00;
+const faltouPassado = totalPrevLoss - comissaHoje; // R$ 0.58
+const gastoHoje = 100.00;
+const totalDescoberto = faltouPassado + gastoHoje; // R$ 100.58
+
+const steps = [
+  {
+    icon: '🔴',
+    label: `Prejuízo dos dias sem venda`,
+    sublabel: `03/08 (R$ 111,51) + 07/08 (R$ 69,07)`,
+    value: totalPrevLoss,
+    valueColor: 'var(--negative)',
+    prefix: '−',
+    bg: 'oklch(0.68 0.2 22 / 0.08)',
+    border: 'oklch(0.68 0.2 22 / 0.25)'
+  },
+  {
+    icon: '💰',
+    label: `Comissão de hoje`,
+    sublabel: `1 venda de R$ 347 → R$ 180,00 comissão (abateu o passado, faltou R$ 0,58)`,
+    value: comissaHoje,
+    valueColor: 'var(--positive)',
+    prefix: '+',
+    bg: 'oklch(0.79 0.16 160 / 0.06)',
+    border: 'oklch(0.79 0.16 160 / 0.2)'
+  },
+  {
+    icon: '📉',
+    label: `Restante dos dias anteriores`,
+    sublabel: `R$ 180,58 − R$ 180,00 comissão = faltaram 58 centavos!`,
+    value: faltouPassado,
+    valueColor: 'var(--warning)',
+    prefix: '−',
+    bg: 'oklch(0.82 0.15 78 / 0.08)',
+    border: 'oklch(0.82 0.15 78 / 0.25)'
+  },
+  {
+    icon: '⚠️',
+    label: `Posição total descoberta hoje`,
+    sublabel: `Faltaram R$ 0,58 do passado + R$ 100,00 gastos hoje`,
+    value: totalDescoberto,
+    valueColor: 'var(--negative)',
+    prefix: '−',
+    bg: 'oklch(0.68 0.2 22 / 0.1)',
+    border: 'oklch(0.68 0.2 22 / 0.3)'
+  }
+];
+
+resumo.innerHTML = `
+  <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.85rem;">📊 Rastreamento Detalhado (Matemática Exata)</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.6rem;">
+    ${steps.map((s,i) => `
+      <div style="background:${s.bg};border:1px solid ${s.border};border-radius:0.65rem;padding:0.85rem 0.9rem;position:relative;">
+        ${i < 3 ? `<div style="position:absolute;top:50%;right:-0.75rem;transform:translateY(-50%);font-size:0.85rem;color:var(--muted);z-index:1;">→</div>` : ''}
+        <div style="font-size:0.95rem;margin-bottom:0.3rem;">${s.icon}</div>
+        <div style="font-size:0.75rem;font-weight:700;color:var(--fg);margin-bottom:0.15rem;">${s.label}</div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.5rem;line-height:1.3;">${s.sublabel}</div>
+        <div style="font-size:1.15rem;font-weight:800;font-family:'Space Grotesk',sans-serif;color:${s.valueColor};font-variant-numeric:tabular-nums;">
+          ${s.prefix} ${brl(s.value)}
+        </div>
+      </div>
+    `).join('')}
+  </div>
+`;
+
+// ─── VERDICT ─────────────────────────────────
+const verdictBox = document.getElementById('verdict-box');
+
+verdictBox.innerHTML = `
+  <div class="verdict-box verd-negative">
+    <div class="verdict-icon">🔴</div>
+    <div class="verdict-text">
+      <h4>Nem os dias anteriores foram 100% cobertos! Faltam centavos do passado + gasto de hoje.</h4>
+      <p>
+        • Prejuízo acumulado dos dias sem venda (03/08 + 07/08): <strong>R$ 180,58</strong><br/>
+        • Comissão de hoje: <strong>R$ 180,00</strong> → Abateu R$ 180,00, mas <span class="hl-red">faltaram R$ 0,58 centavos</span> para quitar o passado!<br/>
+        • Gasto de anúncios hoje: <strong>R$ 100,00</strong> (ainda não coberto)<br/>
+        • <strong>TOTAL NECESSÁRIO PARA ZERAR TUDO: <span class="hl-red">− R$ 100,58</span></strong>
+      </p>
+    </div>
+  </div>
+`;
+
+// ── badge summary no header do tracker ─────────
+const badge = document.getElementById('tracker-summary-badge');
+if (finalDebt > 0) {
+  badge.innerHTML = `<div style="text-align:right">
+    <div style="font-size:0.72rem;color:var(--muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">Descoberto hoje</div>
+    <div style="font-size:1.6rem;font-weight:800;font-family:'Space Grotesk';color:var(--negative);font-variant-numeric:tabular-nums;">− ${brl(finalDebt)}</div>
+  </div>`;
+} else {
+  badge.innerHTML = `<div style="text-align:right">
+    <div style="font-size:0.72rem;color:var(--muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">Posição</div>
+    <div style="font-size:1.6rem;font-weight:800;font-family:'Space Grotesk';color:var(--positive)">✓ Coberto</div>
+  </div>`;
+}
+</script>
+</body>
+</html>
