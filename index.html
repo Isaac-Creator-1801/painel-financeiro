@@ -677,7 +677,7 @@ async function loadFromSupabase() {
       console.error('Supabase (carregar lançamentos):', eErr.message);
     }
     
-    tickets = (t && t.length) ? t.sort((a, b) => a.price - b.price) : DEFAULT_TICKETS;
+    tickets = (t && t.length) ? t.sort((a, b) => String(a.id).localeCompare(String(b.id))) : DEFAULT_TICKETS;
     entries = e ?? [];
     
     if (!t || !t.length) {
