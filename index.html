@@ -998,8 +998,12 @@ function openScaleModal() {
   const key = localStorage.getItem('op-financeiro:scale-key') || '';
   const keyInput = document.getElementById('scaleApiKey');
   if (keyInput) keyInput.value = key;
+
+  const webhookInput = document.getElementById('scaleWebhookUrl');
   const basePath = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
-  if (webhookInput) webhookInput.value = window.location.origin + basePath + '/api/scale-webhook';
+  if (webhookInput) {
+    webhookInput.value = window.location.origin + basePath + '/api/scale-webhook';
+  }
 }
 
 function closeScaleModal() {
@@ -1020,6 +1024,14 @@ function switchScaleTab(tab) {
       content.style.display = t === tab ? 'block' : 'none';
     }
   });
+
+  if (tab === 'webhook') {
+    const webhookInput = document.getElementById('scaleWebhookUrl');
+    const basePath = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
+    if (webhookInput) {
+      webhookInput.value = window.location.origin + basePath + '/api/scale-webhook';
+    }
+  }
 }
 
 function saveScaleSettings() {
@@ -1140,7 +1152,10 @@ async function processScaleImport() {
     <!-- TAB WEBHOOK -->
     <div id="scaleContentWebhook" style="margin-top:1rem; display:none; font-size:0.75rem;">
       <p style="color:var(--muted); margin-bottom:0.5rem;">URL de Webhook gerada para seu site:</p>
-      <input type="text" id="scaleWebhookUrl" readonly class="field" style="font-family:monospace; color:var(--primary); font-size:0.75rem;" />
+      <div style="display:flex; gap:0.5rem;">
+        <input type="text" id="scaleWebhookUrl" readonly value="https://isaac-creator-1801.github.io/painel-financeiro/api/scale-webhook" class="field" style="font-family:monospace; color:var(--primary); font-size:0.75rem;" />
+        <button onclick="navigator.clipboard.writeText(document.getElementById('scaleWebhookUrl').value); this.textContent='Copiado ✓'; setTimeout(()=>this.textContent='Copiar',2000);" class="btn btn-sm" style="white-space:nowrap; background:var(--surface-2); border:1px solid var(--border);">Copiar</button>
+      </div>
       <p style="color:var(--muted); margin-top:0.75rem;">Cadastre essa URL no painel da Scale Tracking para receber atualizações automáticas de vendas e tráfego.</p>
     </div>
   </div>
