@@ -998,8 +998,8 @@ function openScaleModal() {
   const key = localStorage.getItem('op-financeiro:scale-key') || '';
   const keyInput = document.getElementById('scaleApiKey');
   if (keyInput) keyInput.value = key;
-  const webhookInput = document.getElementById('scaleWebhookUrl');
-  if (webhookInput) webhookInput.value = window.location.origin + '/api/scale-webhook';
+  const basePath = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '');
+  if (webhookInput) webhookInput.value = window.location.origin + basePath + '/api/scale-webhook';
 }
 
 function closeScaleModal() {

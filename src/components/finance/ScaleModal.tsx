@@ -37,8 +37,12 @@ export function ScaleModal({
 
   if (!isOpen) return null;
 
+  const basePath = typeof window !== "undefined"
+    ? window.location.pathname.replace(/\/index\.html$/, "").replace(/\/+$/, "")
+    : "";
+
   const webhookUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/api/scale-webhook`
+    ? `${window.location.origin}${basePath}/api/scale-webhook`
     : "https://seu-dominio.com/api/scale-webhook";
 
   const handleSaveConfig = (e: React.FormEvent) => {
