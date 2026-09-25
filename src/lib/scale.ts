@@ -45,8 +45,50 @@ export function isScaleConfigured(): boolean {
   return getScaleConfig() !== null;
 }
 
+export function normalizeDateString(val: unknown): string {
+  if (!val) return "";
+  const str = String(val).trim().split(" ")[0].replace(/["']/g, "");
+  if (str.includes("-")) {
+    const p = str.split("-");
+    if (p.length === 3) {
+      if (p[0].length === 4) return `${p[0]}-${p[1].padStart(2, "0")}-${p[2].padStart(2, "0")}`;
+      if (p[2].length === 4) return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
+    }
+  }
+  if (str.includes("/")) {
+    const p = str.split("/");
+    if (p.length === 3) {
+      let year = p[2].trim();
+      if (year.length === 2) year = `20${year}`;
+      return `${year}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+export function cleanNumber(val: unknown): number {
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  const str = String(val).replace(/[R$\s]/g, "");
+  let cleaned = str;
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(",", ".");
+  }
+  const num = parseFloat(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
+export function cleanInteger(val: unknown): number {
+  if (typeof val === "number") return Math.round(val);
+  if (!val) return 0;
+  const num = parseInt(String(val).replace(/\D/g, ""), 10);
+  return Number.isFinite(num) ? num : 0;
+}
+
 /**
- * Converte dados retornados da Scale Tracking em formato de DayEntry para a aplicação.
+ * Converte dados retornados da SkaleTracking em formato de DayEntry para a aplicação.
  */
 export function mapScaleDataToDayEntry(
   scaleItem: ScaleDailyData,
@@ -56,7 +98,6 @@ export function mapScaleDataToDayEntry(
   const normDate = scaleItem.date;
   const existing = existingEntries.find((e) => e.date === normDate);
 
-  // Mapear vendas para os tickets existentes do sistema
   const salesMap: Record<string, number> = existing?.sales ? { ...existing.sales } : {};
 
   if (scaleItem.salesByTicket && Object.keys(scaleItem.salesByTicket).length > 0) {
@@ -64,7 +105,6 @@ export function mapScaleDataToDayEntry(
       salesMap[ticketId] = (salesMap[ticketId] ?? 0) + qty;
     }
   } else if (scaleItem.salesCount > 0 && tickets.length > 0) {
-    // Se a Scale deu apenas contagem total de vendas sem dividir ticket, distribui no ticket principal/default ou primeiro ticket
     const primaryTicket = tickets[0];
     if (primaryTicket) {
       salesMap[primaryTicket.id] = (salesMap[primaryTicket.id] ?? 0) + scaleItem.salesCount;
@@ -80,12 +120,12 @@ export function mapScaleDataToDayEntry(
     creativeCost: existing?.creativeCost ?? 0,
     frustratedCost: existing?.frustratedCost ?? 0,
     otherCost: existing?.otherCost ?? 0,
-    note: existing?.note ? `${existing.note} | [Scale Sync]` : `Importado via Scale Tracking`,
+    note: existing?.note ? existing.note : `Importado via Scale Tracking`,
   };
 }
 
 /**
- * Busca dados da API do Scale Tracking (se a chave estivar configurada).
+ * Busca dados da API do Scale Tracking (se a chave estiver configurada).
  */
 export async function fetchScaleMetrics(
   config: ScaleConfig,
@@ -118,10 +158,10 @@ export async function fetchScaleMetrics(
     const dataList = Array.isArray(json) ? json : json.data || json.daily || [];
 
     return dataList.map((item: Record<string, unknown>) => {
-      const date = String(item.date || item.day || new Date().toISOString().split("T")[0]);
-      const adSpend = Number(item.ad_spend ?? item.cost ?? item.traffic_cost ?? 0);
-      const revenue = Number(item.revenue ?? item.sales_amount ?? item.gross ?? 0);
-      const salesCount = Number(item.sales_count ?? item.orders ?? item.conversions ?? 0);
+      const date = normalizeDateString(item.date || item.day || new Date().toISOString());
+      const adSpend = cleanNumber(item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.investimento);
+      const revenue = cleanNumber(item.revenue ?? item.sales_amount ?? item.gross ?? item.receita);
+      const salesCount = cleanInteger(item.sales_count ?? item.orders ?? item.conversions ?? item.vendas);
 
       return {
         date,
@@ -133,63 +173,72 @@ export async function fetchScaleMetrics(
       };
     });
   } catch (err) {
-    console.warn("API direct call failed or restricted by CORS/Auth. Returning mock format or fallback.", err);
+    console.warn("API direct call failed or restricted by CORS/Auth.", err);
     throw err;
   }
 }
 
 /**
- * Parser para importação manual de dados exportados da Scale Tracking (JSON ou CSV).
+ * Parser ultra-tolerante para qualquer tabela exportada (Excel .xlsx, TSV, CSV, JSON, texto colado).
  */
 export function parseScaleExport(content: string): ScaleDailyData[] {
   const trimmed = content.trim();
+  if (!trimmed) return [];
+
+  // 1. Tentar JSON
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    // JSON Payload
     try {
       const parsed = JSON.parse(trimmed);
       const items = Array.isArray(parsed) ? parsed : parsed.data || parsed.rows || [parsed];
       return items.map((item: Record<string, unknown>) => ({
-        date: String(item.date || item.data || item.day || new Date().toISOString().split("T")[0]),
-        adSpend: Number(item.adSpend ?? item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.gasto_trafego ?? item.investimento ?? 0),
-        revenue: Number(item.revenue ?? item.receita ?? item.faturamento ?? item.sales_amount ?? 0),
-        salesCount: Number(item.salesCount ?? item.sales_count ?? item.vendas ?? item.orders ?? item.pedidos ?? 0),
-      }));
-    } catch (e) {
-      console.error("Erro no parse JSON da Scale:", e);
+        date: normalizeDateString(item.date || item.data || item.day || item.dia),
+        adSpend: cleanNumber(item.adSpend ?? item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.gasto_trafego ?? item.investimento ?? item.anuncios),
+        revenue: cleanNumber(item.revenue ?? item.receita ?? item.faturamento ?? item.sales_amount ?? item.liquido),
+        salesCount: cleanInteger(item.salesCount ?? item.sales_count ?? item.vendas ?? item.orders ?? item.pedidos ?? item.conversao),
+      })).filter((item) => Boolean(item.date));
+    } catch {
+      // Continuar para texto/tabela
     }
   }
 
-  // Excel / CSV / TSV Fallback
-  const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return [];
+  // 2. Tabela de linhas
+  const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
 
-  // Detectar delimitador (tab, ponto e vírgula ou vírgula)
   const firstLine = lines[0];
-  const delimiter = firstLine.includes("\t") ? "\t" : firstLine.includes(";") ? ";" : ",";
+  const delimiter = firstLine.includes("\t") ? "\t" : firstLine.includes(";") ? ";" : firstLine.includes(",") ? "," : /\s{2,}/;
 
-  const headers = lines[0].toLowerCase().split(delimiter).map(h => h.replace(/["']/g, "").trim());
-  const dateIdx = headers.findIndex((h) => h.includes("data") || h.includes("date") || h.includes("dia"));
-  const spendIdx = headers.findIndex((h) => h.includes("gasto") || h.includes("anuncio") || h.includes("cost") || h.includes("spend") || h.includes("trafego") || h.includes("investimento"));
-  const revenueIdx = headers.findIndex((h) => h.includes("receita") || h.includes("fatura") || h.includes("revenue") || h.includes("vendas_bruta") || h.includes("liquido") || h.includes("total"));
-  const salesIdx = headers.findIndex((h) => h.includes("qtd") || h.includes("vendas") || h.includes("orders") || h.includes("pedidos") || h.includes("conversao"));
+  const rawHeaders = typeof delimiter === "string" ? firstLine.toLowerCase().split(delimiter) : firstLine.toLowerCase().split(delimiter);
+  const headers = rawHeaders.map((h) => h.replace(/["']/g, "").trim());
+
+  let dateIdx = headers.findIndex((h) => h.includes("data") || h.includes("date") || h.includes("dia"));
+  let spendIdx = headers.findIndex((h) => h.includes("gasto") || h.includes("anuncio") || h.includes("cost") || h.includes("spend") || h.includes("trafego") || h.includes("investimento") || h.includes("ad"));
+  let revenueIdx = headers.findIndex((h) => h.includes("receita") || h.includes("fatura") || h.includes("revenue") || h.includes("vendas_bruta") || h.includes("liquido") || h.includes("total") || h.includes("bruto"));
+  let salesIdx = headers.findIndex((h) => h.includes("qtd") || h.includes("vendas") || h.includes("orders") || h.includes("pedidos") || h.includes("conversao") || h.includes("venda"));
+
+  let startLine = 1;
+  // Se a primeira linha não contém nomes reconhecíveis de cabeçalhos, lê a partir da primeira linha
+  if (dateIdx === -1 && spendIdx === -1 && salesIdx === -1) {
+    startLine = 0;
+    dateIdx = 0;
+    spendIdx = 1;
+    salesIdx = 2;
+    revenueIdx = 3;
+  }
 
   const results: ScaleDailyData[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(delimiter);
-    const rawDate = (cols[dateIdx >= 0 ? dateIdx : 0] || "").replace(/["']/g, "").trim();
-    if (!rawDate) continue;
 
-    let normDate = rawDate;
-    if (rawDate.includes("/")) {
-      const p = rawDate.split("/");
-      if (p.length === 3) normDate = `${p[2].length === 2 ? "20" + p[2] : p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
-    }
+  for (let i = startLine; i < lines.length; i++) {
+    const cols = typeof delimiter === "string" ? lines[i].split(delimiter) : lines[i].split(delimiter);
+    if (!cols || !cols.length) continue;
 
-    const cleanNum = (str: string) => parseFloat((str || "").replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+    const rawDateStr = cols[dateIdx >= 0 ? dateIdx : 0] || "";
+    const normDate = normalizeDateString(rawDateStr);
+    if (!normDate) continue;
 
-    const spend = spendIdx !== -1 ? cleanNum(cols[spendIdx]) : 0;
-    const rev = revenueIdx !== -1 ? cleanNum(cols[revenueIdx]) : 0;
-    const sales = salesIdx !== -1 ? parseInt(cols[salesIdx].replace(/\D/g, ""), 10) || 0 : 0;
+    const spend = spendIdx >= 0 && cols[spendIdx] !== undefined ? cleanNumber(cols[spendIdx]) : 0;
+    const rev = revenueIdx >= 0 && cols[revenueIdx] !== undefined ? cleanNumber(cols[revenueIdx]) : 0;
+    const sales = salesIdx >= 0 && cols[salesIdx] !== undefined ? cleanInteger(cols[salesIdx]) : 0;
 
     results.push({
       date: normDate,

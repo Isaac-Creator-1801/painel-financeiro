@@ -1041,54 +1041,109 @@ function saveScaleSettings() {
   closeScaleModal();
 }
 
+function normalizeDateStringJs(val) {
+  if (!val) return "";
+  const str = String(val).trim().split(" ")[0].replace(/["']/g, "");
+  if (str.includes("-")) {
+    const p = str.split("-");
+    if (p.length === 3) {
+      if (p[0].length === 4) return `${p[0]}-${p[1].padStart(2, "0")}-${p[2].padStart(2, "0")}`;
+      if (p[2].length === 4) return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
+    }
+  }
+  if (str.includes("/")) {
+    const p = str.split("/");
+    if (p.length === 3) {
+      let year = p[2].trim();
+      if (year.length === 2) year = `20${year}`;
+      return `${year}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+function cleanNumJs(val) {
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  let str = String(val).replace(/[R$\s]/g, "");
+  if (str.includes(",") && str.includes(".")) {
+    str = str.replace(/\./g, "").replace(",", ".");
+  } else if (str.includes(",")) {
+    str = str.replace(",", ".");
+  }
+  const n = parseFloat(str);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function cleanIntJs(val) {
+  if (typeof val === "number") return Math.round(val);
+  if (!val) return 0;
+  const n = parseInt(String(val).replace(/\D/g, ""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
 async function processScaleImport() {
   const text = document.getElementById('scaleImportText').value.trim();
-  if (!text) { alert('Cole os dados ou tabela da SkaleTracking primeiro!'); return; }
+  if (!text) { alert('Cole a tabela da SkaleTracking primeiro!'); return; }
   
   try {
     let items = [];
     if (text.startsWith('{') || text.startsWith('[')) {
-      const parsed = JSON.parse(text);
-      items = Array.isArray(parsed) ? parsed : (parsed.data || parsed.rows || [parsed]);
-    } else {
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length >= 2) {
-        const delimiter = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
-        const headers = lines[0].toLowerCase().split(delimiter).map(h => h.replace(/["']/g, '').trim());
+      try {
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : (parsed.data || parsed.rows || [parsed]);
+        items = list.map(item => ({
+          date: normalizeDateStringJs(item.date || item.data || item.day || item.dia),
+          ad_spend: cleanNumJs(item.adSpend ?? item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.gasto_trafego ?? item.investimento),
+          sales_count: cleanIntJs(item.salesCount ?? item.sales_count ?? item.vendas ?? item.orders ?? item.pedidos)
+        })).filter(x => Boolean(x.date));
+      } catch(e) {}
+    }
+    
+    if (!items.length) {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length >= 1) {
+        const firstLine = lines[0];
+        const delimiter = firstLine.includes('\t') ? '\t' : firstLine.includes(';') ? ';' : firstLine.includes(',') ? ',' : /\s{2,}/;
+        const headers = typeof delimiter === 'string' ? firstLine.toLowerCase().split(delimiter).map(h => h.replace(/["']/g, '').trim()) : firstLine.toLowerCase().split(delimiter).map(h => h.replace(/["']/g, '').trim());
         
-        const dateIdx = headers.findIndex(h => h.includes('data') || h.includes('date') || h.includes('dia'));
-        const spendIdx = headers.findIndex(h => h.includes('gasto') || h.includes('anuncio') || h.includes('cost') || h.includes('spend') || h.includes('trafego') || h.includes('investimento'));
-        const salesIdx = headers.findIndex(h => h.includes('qtd') || h.includes('vendas') || h.includes('orders') || h.includes('pedidos') || h.includes('conversao'));
+        let dateIdx = headers.findIndex(h => h.includes('data') || h.includes('date') || h.includes('dia'));
+        let spendIdx = headers.findIndex(h => h.includes('gasto') || h.includes('anuncio') || h.includes('cost') || h.includes('spend') || h.includes('trafego') || h.includes('investimento') || h.includes('ad'));
+        let salesIdx = headers.findIndex(h => h.includes('qtd') || h.includes('vendas') || h.includes('orders') || h.includes('pedidos') || h.includes('conversao') || h.includes('venda'));
 
-        const cleanNum = str => parseFloat((str || '').replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+        let startLine = 1;
+        if (dateIdx === -1 && spendIdx === -1 && salesIdx === -1) {
+          startLine = 0; dateIdx = 0; spendIdx = 1; salesIdx = 2;
+        }
 
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(delimiter);
-          const rawDate = (cols[dateIdx >= 0 ? dateIdx : 0] || '').replace(/["']/g, '').trim();
-          if (!rawDate) continue;
+        for (let i = startLine; i < lines.length; i++) {
+          const cols = typeof delimiter === 'string' ? lines[i].split(delimiter) : lines[i].split(delimiter);
+          if (!cols || !cols.length) continue;
+
+          const normDate = normalizeDateStringJs(cols[dateIdx >= 0 ? dateIdx : 0]);
+          if (!normDate) continue;
 
           items.push({
-            date: rawDate,
-            ad_spend: spendIdx !== -1 ? cleanNum(cols[spendIdx]) : 0,
-            sales_count: salesIdx !== -1 ? parseInt(cols[salesIdx].replace(/\D/g, ''), 10) || 0 : 0
+            date: normDate,
+            ad_spend: spendIdx >= 0 && cols[spendIdx] !== undefined ? cleanNumJs(cols[spendIdx]) : 0,
+            sales_count: salesIdx >= 0 && cols[salesIdx] !== undefined ? cleanIntJs(cols[salesIdx]) : 0
           });
         }
       }
     }
 
+    if (!items.length) {
+      alert('⚠️ Nenhuma linha com data válida encontrada no texto colado. Certifique-se de copiar as linhas incluindo a coluna de Data.');
+      return;
+    }
+
     let count = 0;
     for (const item of items) {
-      const date = item.date || item.day;
-      if (!date) continue;
-      
-      let normDate = date;
-      if (date.includes('/')) {
-        const p = date.split('/');
-        if (p.length === 3) normDate = `${p[2].length === 2 ? '20' + p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
-      }
+      const normDate = item.date;
+      if (!normDate) continue;
 
-      const spend = parseFloat(item.ad_spend || item.cost || item.adSpend || item.gasto_trafego || 0);
-      const salesCount = parseInt(item.sales_count || item.vendas || item.orders || 0);
+      const spend = item.ad_spend;
+      const salesCount = item.sales_count;
 
       let e = entries.find(x => x.date === normDate);
       if (e) {
@@ -1107,11 +1162,12 @@ async function processScaleImport() {
     }
 
     renderAll();
-    alert(`✓ ${count} dia(s) sincronizados com sucesso da Scale Tracking!`);
+    alert(`✓ ${count} dia(s) do histórico sincronizado(s) com sucesso da SkaleTracking!`);
     document.getElementById('scaleImportText').value = '';
     closeScaleModal();
   } catch (err) {
-    alert('Erro ao processar dados da Scale Tracking. Verifique o formato.');
+    console.error(err);
+    alert('Erro ao processar dados colados. Verifique se copiou a tabela completa.');
   }
 }
 
