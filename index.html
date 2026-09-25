@@ -1043,7 +1043,7 @@ function saveScaleSettings() {
 
 async function processScaleImport() {
   const text = document.getElementById('scaleImportText').value.trim();
-  if (!text) { alert('Cole o JSON ou CSV da Scale Tracking primeiro!'); return; }
+  if (!text) { alert('Cole os dados ou tabela da SkaleTracking primeiro!'); return; }
   
   try {
     let items = [];
@@ -1051,11 +1051,27 @@ async function processScaleImport() {
       const parsed = JSON.parse(text);
       items = Array.isArray(parsed) ? parsed : (parsed.data || parsed.rows || [parsed]);
     } else {
-      const lines = text.split('\n').filter(Boolean);
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(/[;,]/);
-        if (parts.length >= 2) {
-          items.push({ date: parts[0].trim(), ad_spend: parseFloat(parts[1]) || 0, sales_count: parseInt(parts[2]) || 0 });
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length >= 2) {
+        const delimiter = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].toLowerCase().split(delimiter).map(h => h.replace(/["']/g, '').trim());
+        
+        const dateIdx = headers.findIndex(h => h.includes('data') || h.includes('date') || h.includes('dia'));
+        const spendIdx = headers.findIndex(h => h.includes('gasto') || h.includes('anuncio') || h.includes('cost') || h.includes('spend') || h.includes('trafego') || h.includes('investimento'));
+        const salesIdx = headers.findIndex(h => h.includes('qtd') || h.includes('vendas') || h.includes('orders') || h.includes('pedidos') || h.includes('conversao'));
+
+        const cleanNum = str => parseFloat((str || '').replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(delimiter);
+          const rawDate = (cols[dateIdx >= 0 ? dateIdx : 0] || '').replace(/["']/g, '').trim();
+          if (!rawDate) continue;
+
+          items.push({
+            date: rawDate,
+            ad_spend: spendIdx !== -1 ? cleanNum(cols[spendIdx]) : 0,
+            sales_count: salesIdx !== -1 ? parseInt(cols[salesIdx].replace(/\D/g, ''), 10) || 0 : 0
+          });
         }
       }
     }
@@ -1064,7 +1080,13 @@ async function processScaleImport() {
     for (const item of items) {
       const date = item.date || item.day;
       if (!date) continue;
-      const normDate = date.includes('/') ? date.split('/').reverse().join('-') : date;
+      
+      let normDate = date;
+      if (date.includes('/')) {
+        const p = date.split('/');
+        if (p.length === 3) normDate = `${p[2].length === 2 ? '20' + p[2] : p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+      }
+
       const spend = parseFloat(item.ad_spend || item.cost || item.adSpend || item.gasto_trafego || 0);
       const salesCount = parseInt(item.sales_count || item.vendas || item.orders || 0);
 

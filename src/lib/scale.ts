@@ -150,40 +150,46 @@ export function parseScaleExport(content: string): ScaleDailyData[] {
       const items = Array.isArray(parsed) ? parsed : parsed.data || parsed.rows || [parsed];
       return items.map((item: Record<string, unknown>) => ({
         date: String(item.date || item.data || item.day || new Date().toISOString().split("T")[0]),
-        adSpend: Number(item.adSpend ?? item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.gasto_trafego ?? 0),
+        adSpend: Number(item.adSpend ?? item.ad_spend ?? item.cost ?? item.traffic_cost ?? item.gasto_trafego ?? item.investimento ?? 0),
         revenue: Number(item.revenue ?? item.receita ?? item.faturamento ?? item.sales_amount ?? 0),
-        salesCount: Number(item.salesCount ?? item.sales_count ?? item.vendas ?? item.orders ?? 0),
+        salesCount: Number(item.salesCount ?? item.sales_count ?? item.vendas ?? item.orders ?? item.pedidos ?? 0),
       }));
     } catch (e) {
       console.error("Erro no parse JSON da Scale:", e);
     }
   }
 
-  // CSV Fallback
+  // Excel / CSV / TSV Fallback
   const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
 
-  const headers = lines[0].toLowerCase().split(/[;,]/);
+  // Detectar delimitador (tab, ponto e vírgula ou vírgula)
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes("\t") ? "\t" : firstLine.includes(";") ? ";" : ",";
+
+  const headers = lines[0].toLowerCase().split(delimiter).map(h => h.replace(/["']/g, "").trim());
   const dateIdx = headers.findIndex((h) => h.includes("data") || h.includes("date") || h.includes("dia"));
-  const spendIdx = headers.findIndex((h) => h.includes("gasto") || h.includes("anuncio") || h.includes("cost") || h.includes("spend") || h.includes("trafego"));
-  const revenueIdx = headers.findIndex((h) => h.includes("receita") || h.includes("fatura") || h.includes("revenue") || h.includes("vendas_bruta"));
-  const salesIdx = headers.findIndex((h) => h.includes("qtd") || h.includes("vendas") || h.includes("orders") || h.includes("pedidos"));
+  const spendIdx = headers.findIndex((h) => h.includes("gasto") || h.includes("anuncio") || h.includes("cost") || h.includes("spend") || h.includes("trafego") || h.includes("investimento"));
+  const revenueIdx = headers.findIndex((h) => h.includes("receita") || h.includes("fatura") || h.includes("revenue") || h.includes("vendas_bruta") || h.includes("liquido") || h.includes("total"));
+  const salesIdx = headers.findIndex((h) => h.includes("qtd") || h.includes("vendas") || h.includes("orders") || h.includes("pedidos") || h.includes("conversao"));
 
   const results: ScaleDailyData[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(/[;,]/);
-    if (!cols[dateIdx]) continue;
+    const cols = lines[i].split(delimiter);
+    const rawDate = (cols[dateIdx >= 0 ? dateIdx : 0] || "").replace(/["']/g, "").trim();
+    if (!rawDate) continue;
 
-    const rawDate = cols[dateIdx].replace(/["']/g, "").trim();
     let normDate = rawDate;
     if (rawDate.includes("/")) {
       const p = rawDate.split("/");
       if (p.length === 3) normDate = `${p[2].length === 2 ? "20" + p[2] : p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
     }
 
-    const spend = spendIdx !== -1 ? parseFloat(cols[spendIdx].replace("R$", "").replace(",", ".").trim()) || 0 : 0;
-    const rev = revenueIdx !== -1 ? parseFloat(cols[revenueIdx].replace("R$", "").replace(",", ".").trim()) || 0 : 0;
-    const sales = salesIdx !== -1 ? parseInt(cols[salesIdx].trim(), 10) || 0 : 0;
+    const cleanNum = (str: string) => parseFloat((str || "").replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+
+    const spend = spendIdx !== -1 ? cleanNum(cols[spendIdx]) : 0;
+    const rev = revenueIdx !== -1 ? cleanNum(cols[revenueIdx]) : 0;
+    const sales = salesIdx !== -1 ? parseInt(cols[salesIdx].replace(/\D/g, ""), 10) || 0 : 0;
 
     results.push({
       date: normDate,
