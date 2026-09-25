@@ -73,15 +73,25 @@ export function ScaleModal({
 
       const updatedEntries = [...entries];
       let importedCount = 0;
+      let skippedCount = 0;
 
       for (const item of items) {
         const mappedEntry = mapScaleDataToDayEntry(item, updatedEntries, tickets);
         const idx = updatedEntries.findIndex((e) => e.date === mappedEntry.date);
+
         if (idx !== -1) {
+          const existing = updatedEntries[idx];
+          // ⚠️ Protege entradas manuais: só atualiza se o dia veio da Skale antes
+          const isSkaleEntry = existing.note === "Importado Skale";
+          if (!isSkaleEntry) {
+            skippedCount++;
+            continue; // não toca em dias digitados manualmente
+          }
           updatedEntries[idx] = {
-            ...updatedEntries[idx],
-            adSpend: mappedEntry.adSpend || updatedEntries[idx].adSpend,
+            ...existing,
+            adSpend: mappedEntry.adSpend || existing.adSpend,
             sales: mappedEntry.sales,
+            note: "Importado Skale",
           };
         } else {
           updatedEntries.push(mappedEntry);
@@ -90,9 +100,10 @@ export function ScaleModal({
       }
 
       onImportEntries(updatedEntries);
-      setImportSuccessMsg(`✓ ${importedCount} dia(s) importado(s) com sucesso da Scale Tracking!`);
+      const skipMsg = skippedCount > 0 ? ` (${skippedCount} dia(s) manual(is) preservado(s))` : "";
+      setImportSuccessMsg(`✓ ${importedCount} dia(s) importado(s) da Scale Tracking!${skipMsg}`);
       setImportText("");
-      setTimeout(() => setImportSuccessMsg(null), 3000);
+      setTimeout(() => setImportSuccessMsg(null), 4000);
     } catch (err) {
       console.error(err);
       setImportSuccessMsg("❌ Erro ao processar dados da Scale Tracking.");
@@ -255,8 +266,19 @@ export function ScaleModal({
 
           {activeTab === "import" && (
             <div className="space-y-4">
+              {/* Aviso de proteção de dados manuais */}
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 flex gap-2.5 items-start">
+                <span className="text-emerald-400 text-base leading-none mt-0.5">🛡️</span>
+                <div>
+                  <p className="text-xs font-semibold text-emerald-400">Seus dados manuais estão protegidos</p>
+                  <p className="text-[0.7rem] text-emerald-300/70 mt-0.5">
+                    Dias que você já digitou manualmente <strong>não serão alterados</strong>. A Skale só preenche dias novos que ainda não existem no seu histórico.
+                  </p>
+                </div>
+              </div>
+
               <p className="text-xs text-muted-foreground">
-                Cole aqui o relatório exportado (JSON ou CSV) da Scale Tracking com seus dados de tráfego (adSpend) e vendas para sincronizar múltiplos dias de uma vez.
+                Cole aqui o relatório exportado (JSON ou CSV) da Scale Tracking para preencher dias que ainda não existem no seu dashboard.
               </p>
               <div>
                 <textarea
