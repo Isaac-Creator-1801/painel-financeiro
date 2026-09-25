@@ -24,6 +24,8 @@ import {
   type DayEntry,
   type Ticket,
 } from "@/lib/finance";
+import { ScaleModal } from "@/components/finance/ScaleModal";
+import { isScaleConfigured } from "@/lib/scale";
 import {
   deleteEntryFromSupabase,
   fetchEntriesFromSupabase,
@@ -63,8 +65,10 @@ function Dashboard() {
   const [month, setMonth] = useState<string>("all");
   const [showSettings, setShowSettings] = useState(false);
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [showScaleModal, setShowScaleModal] = useState(false);
   const [ready, setReady] = useState(false);
   const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const [scaleConnected, setScaleConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   // Função para sincronizar dados com o Supabase
@@ -103,10 +107,12 @@ function Dashboard() {
     // Tentativa inicial de sync
     syncWithSupabase();
 
-    // Polling automático a cada 5 segundos para refletir mudanças do celular/PC em tempo real
     const interval = setInterval(() => {
       syncWithSupabase();
+      setScaleConnected(isScaleConfigured());
     }, 5000);
+
+    setScaleConnected(isScaleConfigured());
 
     return () => clearInterval(interval);
   }, [syncWithSupabase]);
@@ -172,6 +178,14 @@ function Dashboard() {
     }
   };
 
+  const handleImportScaleEntries = (newEntries: DayEntry[]) => {
+    setEntries(newEntries);
+    saveEntries(newEntries);
+    if (supabaseConnected) {
+      newEntries.forEach((e) => saveEntryToSupabase(e));
+    }
+  };
+
   const exportCsv = () => {
     const blob = new Blob([toCsv(filtered, tickets)], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -194,7 +208,7 @@ function Dashboard() {
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-primary">
               Operação · controle diário
             </p>
@@ -210,10 +224,21 @@ function Dashboard() {
               {supabaseConnected ? "Supabase Conectado" : "Conectar Supabase"}
               {syncing && <span className="animate-spin text-[0.6rem]">↻</span>}
             </button>
+            <button
+              onClick={() => setShowScaleModal(true)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.7rem] font-medium transition-all ${
+                scaleConnected
+                  ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20"
+                  : "bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${scaleConnected ? "bg-indigo-400 animate-pulse" : "bg-purple-400"}`} />
+              {scaleConnected ? "Scale Conectado" : "Integrar Scale"}
+            </button>
           </div>
           <h1 className="mt-1 text-3xl font-semibold sm:text-4xl">Controle Financeiro</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Vendas por ticket, gastos e lucro real — sincronizado no PC e Celular.
+            Vendas por ticket, gastos com tráfego e lucro real — sincronizado no PC, Celular e Scale Tracking.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -229,6 +254,12 @@ function Dashboard() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setShowScaleModal(true)}
+            className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-300 transition-colors hover:bg-indigo-500/20 flex items-center gap-1.5 font-medium"
+          >
+            ⚡ Scale Tracking
+          </button>
           <button
             onClick={exportCsv}
             className="rounded-lg border border-border px-3 py-2 text-sm transition-colors hover:bg-surface-2"
@@ -369,6 +400,14 @@ function Dashboard() {
         isOpen={showSupabaseModal}
         onClose={() => setShowSupabaseModal(false)}
         onSaved={syncWithSupabase}
+      />
+
+      <ScaleModal
+        isOpen={showScaleModal}
+        onClose={() => setShowScaleModal(false)}
+        entries={entries}
+        tickets={tickets}
+        onImportEntries={handleImportScaleEntries}
       />
     </main>
   );
