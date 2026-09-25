@@ -1085,7 +1085,6 @@ function cleanIntJs(val) {
 
 function sanitizeAllEntries() {
   if (!Array.isArray(entries)) return;
-  let modified = false;
   entries = entries.map(e => {
     const cleanSales = {};
     if (e.sales && typeof e.sales === "object") {
@@ -1093,16 +1092,11 @@ function sanitizeAllEntries() {
         const num = Number(qty);
         if (Number.isFinite(num) && num > 0 && num < 5000) {
           cleanSales[tId] = Math.round(num);
-        } else if (num >= 5000) {
-          modified = true;
         }
       }
     }
     return { ...e, sales: cleanSales };
   });
-  if (modified) {
-    saveEntriesToStorage();
-  }
 }
 
 async function processScaleImport() {
@@ -1203,10 +1197,17 @@ async function processScaleImport() {
     await loadFromSupabase();
   } catch(e) {
     console.error('Erro ao conectar ao Supabase:', e);
+  } finally {
+    try {
+      const dateEl = document.getElementById('entryDate');
+      if (dateEl) dateEl.value = localDateStr();
+      renderAll();
+    } catch(err) {
+      console.error('Erro ao renderizar painel:', err);
+    }
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
   }
-  document.getElementById('entryDate').value = localDateStr();
-  renderAll();
-  document.getElementById('loadingOverlay').style.display = 'none';
 })();
 </script>
 
