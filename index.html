@@ -1157,7 +1157,9 @@ async function processScaleImport() {
         e = { id: crypto.randomUUID(), date: normDate, sales, adSpend: spend, automationCost: 0, creativeCost: 0, frustratedCost: 0, otherCost: 0, note: 'Scale Sync' };
         entries.push(e);
       }
-      await upsertDayEntryToDB(e);
+      if (typeof upsertEntry === 'function') {
+        await upsertEntry(e);
+      }
       count++;
     }
 
