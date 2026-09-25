@@ -81,10 +81,10 @@ export function cleanNumber(val: unknown): number {
 }
 
 export function cleanInteger(val: unknown): number {
-  if (typeof val === "number") return Math.round(val);
+  if (typeof val === "number") return val > 0 && val < 5000 ? Math.round(val) : 0;
   if (!val) return 0;
   const num = parseInt(String(val).replace(/\D/g, ""), 10);
-  return Number.isFinite(num) ? num : 0;
+  return Number.isFinite(num) && num > 0 && num < 5000 ? num : 0;
 }
 
 /**

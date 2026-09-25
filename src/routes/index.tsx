@@ -19,6 +19,7 @@ import {
   previousInvoice,
   saveEntries,
   saveTickets,
+  sanitizeEntry,
   sumMetrics,
   toCsv,
   type DayEntry,
@@ -137,7 +138,9 @@ function Dashboard() {
     [entries],
   );
 
-  const derived = useMemo(() => dailyAdSpend(entries), [entries]);
+  const cleanEntries = useMemo(() => entries.map(sanitizeEntry), [entries]);
+
+  const derived = useMemo(() => dailyAdSpend(cleanEntries), [cleanEntries]);
 
   const filtered = useMemo(
     () =>

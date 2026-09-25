@@ -51,13 +51,29 @@ export function saveTickets(tickets: Ticket[]) {
   window.localStorage.setItem(KEY_TICKETS, JSON.stringify(tickets));
 }
 
+export function sanitizeEntry(entry: DayEntry): DayEntry {
+  const cleanSales: Record<string, number> = {};
+  if (entry.sales && typeof entry.sales === "object") {
+    for (const [ticketId, qty] of Object.entries(entry.sales)) {
+      const num = Number(qty);
+      if (Number.isFinite(num) && num > 0 && num < 5000) {
+        cleanSales[ticketId] = Math.round(num);
+      }
+    }
+  }
+  return {
+    ...entry,
+    sales: cleanSales,
+  };
+}
+
 export function loadEntries(): DayEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(KEY_ENTRIES);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as DayEntry[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(sanitizeEntry) : [];
   } catch {
     return [];
   }

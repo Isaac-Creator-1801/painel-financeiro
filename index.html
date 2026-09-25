@@ -820,6 +820,7 @@ function renderSettingsPanel() {
 
 
 function renderAll() {
+  sanitizeAllEntries();
   const month = document.getElementById('monthFilter').value;
   const filtered = entries.filter(e=>month==='all'||monthKey(e.date)===month).sort((a,b)=>b.date.localeCompare(a.date));
   const totals = sumMetrics(filtered);
@@ -1076,10 +1077,32 @@ function cleanNumJs(val) {
 }
 
 function cleanIntJs(val) {
-  if (typeof val === "number") return Math.round(val);
+  if (typeof val === "number") return val > 0 && val < 5000 ? Math.round(val) : 0;
   if (!val) return 0;
   const n = parseInt(String(val).replace(/\D/g, ""), 10);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) && n > 0 && n < 5000 ? n : 0;
+}
+
+function sanitizeAllEntries() {
+  if (!Array.isArray(entries)) return;
+  let modified = false;
+  entries = entries.map(e => {
+    const cleanSales = {};
+    if (e.sales && typeof e.sales === "object") {
+      for (const [tId, qty] of Object.entries(e.sales)) {
+        const num = Number(qty);
+        if (Number.isFinite(num) && num > 0 && num < 5000) {
+          cleanSales[tId] = Math.round(num);
+        } else if (num >= 5000) {
+          modified = true;
+        }
+      }
+    }
+    return { ...e, sales: cleanSales };
+  });
+  if (modified) {
+    saveEntriesToStorage();
+  }
 }
 
 async function processScaleImport() {
