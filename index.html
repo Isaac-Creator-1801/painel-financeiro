@@ -486,14 +486,16 @@
       <p class="header-label">Operação · controle diário</p>
       <h1 class="header-title">Controle Financeiro</h1>
       <p class="header-sub">
-        Vendas por ticket, gastos e lucro real — dia a dia.
+        Vendas por ticket, gastos com tráfego e lucro real — dia a dia.
         <span class="cloud-badge" style="margin-left:0.5rem;">☁️ Sincronizado na nuvem</span>
+        <span id="scaleStatusBadge" class="cloud-badge" style="margin-left:0.5rem; background:rgba(99,102,241,0.15); border-color:rgba(99,102,241,0.4); color:#c7d2fe; cursor:pointer;" onclick="openScaleModal()">⚡ Scale Tracking</span>
       </p>
     </div>
     <div class="header-actions">
       <select class="field" id="monthFilter" onchange="renderAll()">
         <option value="all">Todo o período</option>
       </select>
+      <button class="btn btn-ghost" style="border-color:rgba(99,102,241,0.4); background:rgba(99,102,241,0.12); color:#c7d2fe; font-weight:600;" onclick="openScaleModal()">⚡ Scale Tracking</button>
       <button class="btn btn-ghost" onclick="exportCsv()">Exportar CSV</button>
       <button class="btn btn-ghost" id="toggleSettings" onclick="toggleSettings()">Tickets</button>
     </div>
@@ -990,6 +992,95 @@ function exportCsv() {
   const a = document.createElement('a'); a.href=url; a.download=`controle-financeiro-${month==='all'?'geral':month}.csv`; a.click(); URL.revokeObjectURL(url);
 }
 
+function openScaleModal() {
+  const modal = document.getElementById('scaleModal');
+  if (modal) modal.style.display = 'flex';
+  const key = localStorage.getItem('op-financeiro:scale-key') || '';
+  const keyInput = document.getElementById('scaleApiKey');
+  if (keyInput) keyInput.value = key;
+  const webhookInput = document.getElementById('scaleWebhookUrl');
+  if (webhookInput) webhookInput.value = window.location.origin + '/api/scale-webhook';
+}
+
+function closeScaleModal() {
+  const modal = document.getElementById('scaleModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function switchScaleTab(tab) {
+  const tabs = ['api', 'import', 'webhook'];
+  tabs.forEach(t => {
+    const btn = document.getElementById('scaleTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    const content = document.getElementById('scaleContent' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (btn) {
+      btn.style.background = t === tab ? 'var(--primary)' : 'var(--surface-2)';
+      btn.style.color = t === tab ? 'var(--primary-fg)' : 'var(--fg)';
+    }
+    if (content) {
+      content.style.display = t === tab ? 'block' : 'none';
+    }
+  });
+}
+
+function saveScaleSettings() {
+  const key = document.getElementById('scaleApiKey').value.trim();
+  localStorage.setItem('op-financeiro:scale-key', key);
+  alert('✓ Configurações da Scale Tracking salvas com sucesso!');
+  closeScaleModal();
+}
+
+async function processScaleImport() {
+  const text = document.getElementById('scaleImportText').value.trim();
+  if (!text) { alert('Cole o JSON ou CSV da Scale Tracking primeiro!'); return; }
+  
+  try {
+    let items = [];
+    if (text.startsWith('{') || text.startsWith('[')) {
+      const parsed = JSON.parse(text);
+      items = Array.isArray(parsed) ? parsed : (parsed.data || parsed.rows || [parsed]);
+    } else {
+      const lines = text.split('\n').filter(Boolean);
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(/[;,]/);
+        if (parts.length >= 2) {
+          items.push({ date: parts[0].trim(), ad_spend: parseFloat(parts[1]) || 0, sales_count: parseInt(parts[2]) || 0 });
+        }
+      }
+    }
+
+    let count = 0;
+    for (const item of items) {
+      const date = item.date || item.day;
+      if (!date) continue;
+      const normDate = date.includes('/') ? date.split('/').reverse().join('-') : date;
+      const spend = parseFloat(item.ad_spend || item.cost || item.adSpend || item.gasto_trafego || 0);
+      const salesCount = parseInt(item.sales_count || item.vendas || item.orders || 0);
+
+      let e = entries.find(x => x.date === normDate);
+      if (e) {
+        e.adSpend = spend || e.adSpend;
+        if (salesCount > 0 && tickets.length > 0) {
+          e.sales[tickets[0].id] = (e.sales[tickets[0].id] || 0) + salesCount;
+        }
+      } else {
+        const sales = {};
+        if (salesCount > 0 && tickets.length > 0) sales[tickets[0].id] = salesCount;
+        e = { id: crypto.randomUUID(), date: normDate, sales, adSpend: spend, automationCost: 0, creativeCost: 0, frustratedCost: 0, otherCost: 0, note: 'Scale Sync' };
+        entries.push(e);
+      }
+      await upsertDayEntryToDB(e);
+      count++;
+    }
+
+    renderAll();
+    alert(`✓ ${count} dia(s) sincronizados com sucesso da Scale Tracking!`);
+    document.getElementById('scaleImportText').value = '';
+    closeScaleModal();
+  } catch (err) {
+    alert('Erro ao processar dados da Scale Tracking. Verifique o formato.');
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 (async () => {
   try {
@@ -1002,5 +1093,57 @@ function exportCsv() {
   document.getElementById('loadingOverlay').style.display = 'none';
 })();
 </script>
+
+<!-- SCALE TRACKING MODAL HTML -->
+<div id="scaleModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:1rem; width:100%; max-width:600px; padding:1.5rem; box-shadow:var(--shadow); color:var(--fg); position:relative;">
+    <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <div style="background:linear-gradient(135deg, #6366f1, #a855f7); width:38px; height:38px; border-radius:0.75rem; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.2rem; color:#fff;">⚡</div>
+        <div>
+          <h2 style="font-size:1.15rem; font-weight:700; margin:0;">Integração Scale Tracking</h2>
+          <p style="font-size:0.75rem; color:var(--muted); margin:0.1rem 0 0 0;">Sincronize vendas, receita e custo por tráfego automaticamente.</p>
+        </div>
+      </div>
+      <button onclick="closeScaleModal()" style="background:transparent; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; padding:0.25rem 0.5rem;">✕</button>
+    </div>
+
+    <!-- TABS -->
+    <div style="display:flex; gap:0.5rem; border-bottom:1px solid var(--border); padding:0.75rem 0;">
+      <button id="scaleTabApi" onclick="switchScaleTab('api')" class="btn btn-sm" style="background:var(--primary); color:var(--primary-fg); font-weight:600;">🔌 API / Credenciais</button>
+      <button id="scaleTabImport" onclick="switchScaleTab('import')" class="btn btn-sm">📥 Importar (CSV/JSON)</button>
+      <button id="scaleTabWebhook" onclick="switchScaleTab('webhook')" class="btn btn-sm">🔗 Webhook Tempo Real</button>
+    </div>
+
+    <!-- TAB API -->
+    <div id="scaleContentApi" style="margin-top:1rem; display:block;">
+      <div style="margin-bottom:1rem;">
+        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:var(--muted); margin-bottom:0.4rem;">Chave de API / Token da Scale Tracking</label>
+        <input type="password" id="scaleApiKey" placeholder="scale_live_sk_..." class="field" style="font-family:monospace; font-size:0.8rem;" />
+        <p style="font-size:0.72rem; color:var(--muted); margin-top:0.3rem;">Copie sua API Key no painel da Scale (Configurações &gt; API & Integrações).</p>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+        <button onclick="closeScaleModal()" class="btn btn-ghost">Cancelar</button>
+        <button onclick="saveScaleSettings()" class="btn btn-primary">Salvar Integração</button>
+      </div>
+    </div>
+
+    <!-- TAB IMPORT -->
+    <div id="scaleContentImport" style="margin-top:1rem; display:none;">
+      <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">Cole o relatório exportado (JSON ou CSV) da Scale Tracking para sincronizar tráfego (adSpend) e vendas instantaneamente:</p>
+      <textarea id="scaleImportText" class="field" rows="6" placeholder='Exemplo JSON:&#10;[&#10;  { "date": "2026-09-25", "ad_spend": 350.00, "sales_count": 5, "revenue": 1485.00 }&#10;]' style="font-family:monospace; font-size:0.75rem;"></textarea>
+      <div style="display:flex; justify-content:flex-end; margin-top:0.75rem;">
+        <button onclick="processScaleImport()" class="btn btn-primary" style="background:#6366f1; color:#fff;">Processar e Sincronizar</button>
+      </div>
+    </div>
+
+    <!-- TAB WEBHOOK -->
+    <div id="scaleContentWebhook" style="margin-top:1rem; display:none; font-size:0.75rem;">
+      <p style="color:var(--muted); margin-bottom:0.5rem;">URL de Webhook gerada para seu site:</p>
+      <input type="text" id="scaleWebhookUrl" readonly class="field" style="font-family:monospace; color:var(--primary); font-size:0.75rem;" />
+      <p style="color:var(--muted); margin-top:0.75rem;">Cadastre essa URL no painel da Scale Tracking para receber atualizações automáticas de vendas e tráfego.</p>
+    </div>
+  </div>
+</div>
 </body>
 </html>
