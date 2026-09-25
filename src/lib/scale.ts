@@ -98,16 +98,19 @@ export function mapScaleDataToDayEntry(
   const normDate = scaleItem.date;
   const existing = existingEntries.find((e) => e.date === normDate);
 
-  const salesMap: Record<string, number> = existing?.sales ? { ...existing.sales } : {};
+  // Substituir (sobrescrever) vendas em vez de somar por cima
+  const salesMap: Record<string, number> = {};
 
   if (scaleItem.salesByTicket && Object.keys(scaleItem.salesByTicket).length > 0) {
     for (const [ticketId, qty] of Object.entries(scaleItem.salesByTicket)) {
-      salesMap[ticketId] = (salesMap[ticketId] ?? 0) + qty;
+      if (qty > 0 && qty < 5000) {
+        salesMap[ticketId] = Math.round(qty);
+      }
     }
-  } else if (scaleItem.salesCount > 0 && tickets.length > 0) {
+  } else if (scaleItem.salesCount > 0 && scaleItem.salesCount < 5000 && tickets.length > 0) {
     const primaryTicket = tickets[0];
     if (primaryTicket) {
-      salesMap[primaryTicket.id] = (salesMap[primaryTicket.id] ?? 0) + scaleItem.salesCount;
+      salesMap[primaryTicket.id] = Math.round(scaleItem.salesCount);
     }
   }
 
@@ -120,7 +123,7 @@ export function mapScaleDataToDayEntry(
     creativeCost: existing?.creativeCost ?? 0,
     frustratedCost: existing?.frustratedCost ?? 0,
     otherCost: existing?.otherCost ?? 0,
-    note: existing?.note ? existing.note : `Importado via Scale Tracking`,
+    note: existing?.note ? existing.note : `Scale Sync`,
   };
 }
 

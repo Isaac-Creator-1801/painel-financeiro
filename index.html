@@ -1170,13 +1170,14 @@ async function processScaleImport() {
 
       let e = entries.find(x => x.date === normDate);
       if (e) {
-        e.adSpend = spend || e.adSpend;
-        if (salesCount > 0 && tickets.length > 0) {
-          e.sales[tickets[0].id] = (e.sales[tickets[0].id] || 0) + salesCount;
+        e.adSpend = spend;
+        e.sales = {};
+        if (salesCount > 0 && salesCount < 5000 && tickets.length > 0) {
+          e.sales[tickets[0].id] = salesCount;
         }
       } else {
         const sales = {};
-        if (salesCount > 0 && tickets.length > 0) sales[tickets[0].id] = salesCount;
+        if (salesCount > 0 && salesCount < 5000 && tickets.length > 0) sales[tickets[0].id] = salesCount;
         e = { id: crypto.randomUUID(), date: normDate, sales, adSpend: spend, automationCost: 0, creativeCost: 0, frustratedCost: 0, otherCost: 0, note: 'Scale Sync' };
         entries.push(e);
       }
